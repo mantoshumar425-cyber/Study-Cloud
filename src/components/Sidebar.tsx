@@ -19,7 +19,7 @@ import {
 import { NavTab, ThemeId } from '../types';
 
 export const STUDY_CLOUD_LOGO =
-  '/assets/aistudio/file_00000000b94c82119cbcfb37b85fc976_f5e16b88.png';
+  '/assets/aistudio/file_0000000032b08211ac7bbc1f00111c6e_0ba6160d.png';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -94,11 +94,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-3 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-color)] rounded-xl"
           title="About Study Cloud"
         >
-          <div className="flex h-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white px-2.5 py-1 shadow-sm border border-slate-200/80">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-md ring-1 ring-white/15">
             <img
               src={STUDY_CLOUD_LOGO}
               alt="Study Cloud Logo"
-              className={compact ? 'h-8 w-8 object-cover object-left' : 'h-10 w-auto max-w-[135px] object-contain'}
+              className="h-full w-full object-cover scale-[1.04]"
             />
           </div>
           {!compact && (

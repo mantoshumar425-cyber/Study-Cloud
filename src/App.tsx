@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useTransition } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Search,
-  BookOpen,
   GraduationCap,
   Sparkles,
   WifiOff,
@@ -54,7 +53,6 @@ import { TestView } from './components/TestView';
 
 export default function App() {
   const isOnline = useOnlineStatus();
-  const [isPending, startTransition] = useTransition();
 
   // State
   const [allBatches, setAllBatches] = useState<BatchItem[]>([]);
@@ -308,7 +306,7 @@ export default function App() {
 
         {/* Offline Toast */}
         {!isOnline && (
-          <div className="sticky top-16 z-30 flex items-center justify-center gap-2 bg-amber-500 py-1.5 px-4 text-xs font-bold text-white shadow-md">
+          <div className="sticky top-[72px] z-20 flex items-center justify-center gap-2 bg-amber-500 py-2 px-4 text-xs sm:text-sm font-bold text-white shadow-md">
             <WifiOff className="h-4 w-4" />
             <span>Offline Mode — Cached study batches and saved history are active.</span>
           </div>
@@ -561,7 +559,10 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <select
                   value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedLanguage(e.target.value);
+                    setDisplayCount(36);
+                  }}
                   className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-4 text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
                 >
                   <option value="all">Language: All</option>
@@ -572,7 +573,10 @@ export default function App() {
 
                 <select
                   value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedClass(e.target.value);
+                    setDisplayCount(36);
+                  }}
                   className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-4 text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
                 >
                   <option value="all">Class: All</option>
@@ -631,6 +635,20 @@ export default function App() {
                 </span>
               )}
             </div>
+
+            {/* Error Banner if catalog failed */}
+            {batchError && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-300">
+                <span>Could not refresh batch catalog: {batchError}</span>
+                <button
+                  type="button"
+                  onClick={() => loadBatches()}
+                  className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-500 transition"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
             {/* Batches Grid */}
             {isLoadingBatches ? (

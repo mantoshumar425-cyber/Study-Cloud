@@ -19,11 +19,11 @@ export const AboutModal: React.FC<AboutModalProps> = ({ onClose }) => {
           <X className="h-5 w-5" />
         </button>
 
-        <div className="mx-auto mb-3 inline-flex items-center justify-center rounded-2xl bg-white px-4 py-2.5 shadow-md border border-slate-200">
+        <div className="mx-auto mb-3.5 flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl shadow-xl ring-1 ring-white/15">
           <img
             src={STUDY_CLOUD_LOGO}
             alt="Study Cloud Logo"
-            className="h-14 w-auto object-contain"
+            className="h-full w-full object-cover scale-[1.04]"
           />
         </div>
 

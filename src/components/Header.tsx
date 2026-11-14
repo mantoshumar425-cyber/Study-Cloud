@@ -80,11 +80,11 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2.5 rounded-xl p-1 text-left transition hover:opacity-90 focus:outline-none whitespace-nowrap shrink-0 lg:hidden"
             title="Study Cloud Home"
           >
-            <div className="flex h-10 items-center justify-center overflow-hidden rounded-xl bg-white px-2.5 py-0.5 shadow-sm border border-slate-200/80">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-md ring-1 ring-white/15">
               <img
                 src={STUDY_CLOUD_LOGO}
                 alt="Study Cloud Logo"
-                className="h-8 w-auto object-contain"
+                className="h-full w-full object-cover scale-[1.04]"
               />
             </div>
             <span className="font-['Sora'] text-lg font-extrabold tracking-tight text-[var(--text-primary)] whitespace-nowrap">

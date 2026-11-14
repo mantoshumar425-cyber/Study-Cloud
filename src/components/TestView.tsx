@@ -314,23 +314,23 @@ export const TestView: React.FC<TestViewProps> = ({
   useEffect(() => {
     if (!activePack || submitted) return;
     const timer = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          handleSubmitTest();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => window.clearInterval(timer);
   }, [activePack, submitted]);
+
+  useEffect(() => {
+    if (activePack && !submitted && secondsLeft === 0) {
+      handleSubmitTest();
+    }
+  }, [activePack, submitted, secondsLeft]);
 
   const startPack = (pack: PracticePack) => {
     setActivePack(pack);
     setCurrentIdx(0);
     setAnswers({});
     setMarked({});
-    setSecondsLeft(pack.durationMinutes * 60);
+    setSecondsLeft(Math.max(1, pack.durationMinutes * 60));
     setSubmitted(false);
   };
 
