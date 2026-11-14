@@ -455,12 +455,15 @@ export async function resolveVideoStream(params: {
   videoId: string;
   findKey?: string;
   videoDetailsId?: string;
+  parentScheduleId?: string;
   videoName: string;
   videoImg?: string;
   videoType?: string;
   playType?: string;
   videoUrl?: string;
   typeId?: string;
+  isLive?: boolean;
+  urlType?: string;
 }): Promise<ResolvedStream> {
   const qs = new URLSearchParams({
     batch_id: params.batchId,
@@ -475,13 +478,19 @@ export async function resolveVideoStream(params: {
   if (params.programId) qs.set('program_id', params.programId);
   if (params.findKey) qs.set('find_key', params.findKey);
   if (params.videoDetailsId) qs.set('video_details_id', params.videoDetailsId);
+  if (params.parentScheduleId) qs.set('parent_schedule_id', params.parentScheduleId);
   if (params.videoUrl) qs.set('video_url', params.videoUrl);
   if (params.typeId) qs.set('typeId', params.typeId);
+  if (params.isLive) qs.set('is_live', '1');
+  if (params.urlType) qs.set('url_type', params.urlType);
 
   const res = await fetch(`/api/stream?${qs.toString()}`);
   const json = await res.json();
   if (!res.ok || !json.success) {
-    throw new Error(json.message || `Stream resolution failed (${res.status})`);
+    const err: any = new Error(json.message || `Stream resolution failed (${res.status})`);
+    err.liveStreamPending = Boolean(json.liveStreamPending);
+    err.urlType = json.urlType;
+    throw err;
   }
   return json;
 }

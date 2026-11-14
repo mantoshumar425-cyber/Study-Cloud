@@ -114,6 +114,11 @@ export interface ScheduledClassItem {
   isCancelled?: boolean;
   isDPPVideos?: boolean;
   isDPPNotes?: boolean;
+  parentScheduleId?: string;
+  scheduleIds?: string[];
+  mediaChannelId?: string;
+  ytStreamUrl?: string;
+  newCdnLink?: string;
   videoDetails?: {
     _id?: string;
     id?: string;
@@ -122,6 +127,7 @@ export interface ScheduledClassItem {
     image?: string;
     videoUrl?: string;
     embedCode?: string;
+    hls_url?: string;
     duration?: string;
   };
   homeworkIds?: BatchNoteHomework[];
@@ -171,6 +177,8 @@ export interface ResolvedStream {
   } | null;
   attachments?: BatchAttachmentItem[];
   message?: string;
+  liveStreamPending?: boolean;
+  urlType?: string;
 }
 
 export interface WatchHistoryItem {

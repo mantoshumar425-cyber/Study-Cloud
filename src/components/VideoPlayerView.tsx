@@ -52,6 +52,7 @@ export interface ActiveLectureInput {
   videoId: string;
   findKey?: string;
   videoDetailsId?: string;
+  parentScheduleId?: string;
   typeId?: string;
   title: string;
   videoImg?: string;
@@ -59,6 +60,8 @@ export interface ActiveLectureInput {
   playType?: string;
   rawVideoUrl?: string;
   resumeSeconds?: number;
+  isLive?: boolean;
+  urlType?: string;
 }
 
 interface VideoPlayerViewProps {
@@ -80,6 +83,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   // Stream resolution state
   const [resolving, setResolving] = useState(true);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [isLivePendingError, setIsLivePendingError] = useState(false);
+  const [isLiveStream, setIsLiveStream] = useState(Boolean(lecture.isLive));
   const [streamData, setStreamData] = useState<ResolvedStream | null>(null);
 
   // Video playback state
@@ -199,6 +204,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const loadStream = async () => {
     setResolving(true);
     setResolveError(null);
+    setIsLivePendingError(false);
     try {
       const data = await resolveVideoStream({
         batchId: lecture.batchId,
@@ -208,15 +214,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         videoId: lecture.videoId,
         findKey: lecture.findKey,
         videoDetailsId: lecture.videoDetailsId,
+        parentScheduleId: lecture.parentScheduleId,
         typeId: lecture.typeId,
         videoName: lecture.title,
         videoImg: lecture.videoImg,
         videoType: lecture.videoType || 'new',
         playType: lecture.playType || 'Lecture',
         videoUrl: lecture.rawVideoUrl,
+        isLive: lecture.isLive,
+        urlType: lecture.urlType,
       });
       setStreamData(data);
     } catch (err: any) {
+      setIsLivePendingError(Boolean(err?.liveStreamPending));
       setResolveError(err?.message || 'Unable to load video stream.');
     } finally {
       setResolving(false);
@@ -224,6 +234,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   useEffect(() => {
+    setIsLiveStream(Boolean(lecture.isLive));
     recordStudyActivity();
     setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId));
     onAdventureUpdate?.();
@@ -254,6 +265,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 60,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -266,10 +279,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         }));
         setQualityLevels(levels);
         setCurrentLevel(-1);
-        if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
+        if (lecture.resumeSeconds && lecture.resumeSeconds > 5 && !lecture.isLive) {
           videoEl.currentTime = lecture.resumeSeconds;
         }
         videoEl.play().catch(() => {});
+      });
+
+      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+        if (data?.details?.live) {
+          setIsLiveStream(true);
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -465,7 +484,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   const formatTime = (secs: number) => {
-    if (!secs || !isFinite(secs)) return '0:00';
+    if (!secs || !Number.isFinite(secs)) return isLiveStream ? 'LIVE' : '0:00';
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = Math.floor(secs % 60);
@@ -705,9 +724,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
         ) : resolveError ? (
           <div className="flex flex-col items-center gap-3 text-center p-6 max-w-md">
-            <AlertTriangle className="h-12 w-12 text-amber-500" />
+            {isLivePendingError ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/15 px-3 py-1 text-xs font-bold text-red-400">
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                LIVE CLASS STREAM
+              </span>
+            ) : (
+              <AlertTriangle className="h-12 w-12 text-amber-500" />
+            )}
             <h3 className="font-['Sora'] text-lg font-bold text-white">
-              Could Not Play Video
+              {isLivePendingError ? 'Live Class Waiting for Stream / VOD' : 'Could Not Play Video'}
             </h3>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{resolveError}</p>
             <div className="flex gap-2 mt-2">
@@ -718,7 +744,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 }}
                 className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 transition"
               >
-                Retry Stream
+                {isLivePendingError ? 'Check Again / Retry' : 'Retry Stream'}
               </button>
               <button
                 onClick={(e) => {
@@ -754,7 +780,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 const cur = e.currentTarget.currentTime;
                 const dur = e.currentTarget.duration || 0;
                 setCurrentTime(cur);
-                if (dur > 0 && cur / dur >= 0.8 && !completed) {
+                if (Number.isFinite(dur) && dur > 0 && cur / dur >= 0.8 && !completed) {
                   markLectureCompleted({
                     batchId: lecture.batchId,
                     subjectId: lecture.subjectId,
@@ -766,7 +792,15 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   onAdventureUpdate?.();
                 }
               }}
-              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                if (Number.isFinite(d) && d > 0) {
+                  setDuration(d);
+                } else if (d === Infinity) {
+                  setIsLiveStream(true);
+                  setDuration(0);
+                }
+              }}
               className={`h-full w-full cursor-pointer ${
                 fillMode === 'cover' ? 'object-cover' : 'object-contain'
               } ${isAudioOnly ? 'opacity-0 pointer-events-none absolute inset-0' : ''}`}
@@ -971,11 +1005,18 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         >
           {/* Seek Bar */}
           <div className="flex items-center gap-3 mb-2.5">
-            <span className="font-mono text-xs sm:text-sm text-slate-200">{formatTime(currentTime)}</span>
+            {isLiveStream && !duration ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600/90 px-2.5 py-0.5 text-[11px] font-extrabold text-white">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                LIVE
+              </span>
+            ) : (
+              <span className="font-mono text-xs sm:text-sm text-slate-200">{formatTime(currentTime)}</span>
+            )}
             <div
               onClick={(e) => {
                 const vid = videoRef.current;
-                if (!vid || !duration) return;
+                if (!vid || !duration || !Number.isFinite(duration)) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 vid.currentTime = ratio * duration;
@@ -985,14 +1026,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             >
               <div
                 className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : isLiveStream ? 100 : 0}%` }}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 h-4 w-4 -ml-2 rounded-full bg-white shadow-md transition group-hover:scale-110"
-                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : isLiveStream ? 100 : 0}%` }}
               />
             </div>
-            <span className="font-mono text-xs sm:text-sm text-slate-300">{formatTime(duration)}</span>
+            <span className="font-mono text-xs sm:text-sm text-slate-300">{isLiveStream && !duration ? 'LIVE' : formatTime(duration)}</span>
           </div>
 
           {/* Control Buttons Row */}

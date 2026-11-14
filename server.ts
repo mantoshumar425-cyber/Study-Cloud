@@ -19,10 +19,13 @@ const AES_IV = Buffer.from('VDMhblc4JHFaNUBySzEjcA==', 'base64');
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-// Server-side token cache
+// Server-side token cache + single-flight lock to prevent 429 cooldowns
 let cachedToken: string | null = null;
 let tokenFetchedAt = 0;
-const TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
+let tokenFailedAt = 0;
+let tokenInFlight: Promise<string> | null = null;
+const TOKEN_TTL_MS = 25 * 60 * 1000; // 25 minutes
+const TOKEN_FAIL_COOLDOWN_MS = 15 * 1000; // 15 seconds
 
 // Server-side batches cache
 let cachedBatchesPayload: any = null;
@@ -30,34 +33,51 @@ let batchesFetchedAt = 0;
 const BATCHES_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 async function getBearerToken(forceRefresh = false): Promise<string> {
-  if (!forceRefresh && cachedToken && Date.now() - tokenFetchedAt < TOKEN_TTL_MS) {
+  const now = Date.now();
+  if (!forceRefresh && cachedToken && now - tokenFetchedAt < TOKEN_TTL_MS) {
     return cachedToken;
   }
-  try {
-    const res = await fetch(`https://vidcloud.eu.org/generate_token.php?_t=${Date.now()}`, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        Referer: 'https://vidcloud.eu.org/',
-      },
-    });
-    if (!res.ok) {
-      if (cachedToken) return cachedToken;
-      throw new Error(`Token fetch failed with status ${res.status}`);
-    }
-    const json = (await res.json().catch(() => ({}))) as any;
-    const token = json.access_token || json.token;
-    if (!token) {
-      // generate_token.php sometimes rate-limits rapid requests; keep existing valid token if available
-      if (cachedToken) return cachedToken;
-      throw new Error('Token missing from generate_token.php response');
-    }
-    cachedToken = token;
-    tokenFetchedAt = Date.now();
-    return token;
-  } catch (err) {
-    if (cachedToken) return cachedToken;
-    throw err;
+  if (forceRefresh && cachedToken && now - tokenFailedAt < TOKEN_FAIL_COOLDOWN_MS) {
+    return cachedToken;
   }
+  if (tokenInFlight) {
+    return tokenInFlight;
+  }
+
+  tokenInFlight = (async () => {
+    try {
+      const res = await fetch(`https://vidcloud.eu.org/generate_token.php?_t=${Date.now()}`, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          Referer: 'https://vidcloud.eu.org/',
+        },
+      });
+      if (!res.ok) {
+        tokenFailedAt = Date.now();
+        if (cachedToken) return cachedToken;
+        throw new Error(`Token fetch failed with status ${res.status}`);
+      }
+      const json = (await res.json().catch(() => ({}))) as any;
+      const token = json.access_token || json.token;
+      if (!token) {
+        tokenFailedAt = Date.now();
+        if (cachedToken) return cachedToken;
+        throw new Error('Token missing from generate_token.php response');
+      }
+      cachedToken = token;
+      tokenFetchedAt = Date.now();
+      tokenFailedAt = 0;
+      return token;
+    } catch (err) {
+      tokenFailedAt = Date.now();
+      if (cachedToken) return cachedToken;
+      throw err;
+    } finally {
+      tokenInFlight = null;
+    }
+  })();
+
+  return tokenInFlight;
 }
 
 function sortBatchesNewestFirst(list: any[]): any[] {
@@ -249,16 +269,25 @@ function enrichScheduleItems(items: any[], details: any): any[] {
   const { teacherMap, teacherImageMap, subjectById, subjectPrimaryTeacherMap } = buildTeacherAndSubjectMaps(details);
   const now = Date.now();
 
-  return items.map((rawItem) => {
+  const enriched = items.map((rawItem) => {
     const outerType = String(rawItem?.type || '').toUpperCase();
+    // PW /v1/todays-schedule wraps schedule payload under `rawItem.data` for many batches
     const wrapper =
+      (rawItem?.data && typeof rawItem.data === 'object' && !Array.isArray(rawItem.data) ? rawItem.data : null) ||
       rawItem?.bulkScheduleDetails ||
       rawItem?.scheduleDetails ||
       rawItem?.notesDetails ||
       (rawItem?.videoDetails && (rawItem.videoDetails.startTime || rawItem.videoDetails.date || rawItem.videoDetails.topic)
         ? rawItem.videoDetails
         : null);
-    const item = wrapper ? { ...rawItem, ...wrapper, _id: rawItem._id || wrapper._id, type: rawItem.type || wrapper.type } : rawItem;
+    const item = wrapper
+      ? {
+          ...rawItem,
+          ...wrapper,
+          _id: rawItem._id || wrapper._id,
+          type: rawItem.type || wrapper.type,
+        }
+      : rawItem;
 
     const batchSubjIdStr = String(item?.batchSubjectId || item?.subjectId?._id || '');
     const subjMeta =
@@ -266,7 +295,8 @@ function enrichScheduleItems(items: any[], details: any): any[] {
       (item?.subjectId?._id && subjectById.get(String(item.subjectId._id))) ||
       null;
     const subjectName = item?.subjectId?.name || subjMeta?.name || 'General';
-    const subjectSlug = item?.subjectId?.slug || subjMeta?.slug || String(item?.batchSubjectId || '');
+    // Prefer batch-specific subject slug from batch details over global subjectId.slug
+    const subjectSlug = subjMeta?.slug || item?.subjectId?.slug || String(item?.batchSubjectId || '');
 
     const rawTeachers = Array.isArray(item?.teachers) ? item.teachers : [];
     const teacherNames: string[] = [];
@@ -314,22 +344,26 @@ function enrichScheduleItems(items: any[], details: any): any[] {
       'Scheduled Session';
 
     const startTs = Date.parse(item?.startTime || item?.date || '') || 0;
-    const endTs = Date.parse(item?.endTime || '') || (startTs ? startTs + 2 * 60 * 60 * 1000 : 0);
+    const rawEndTs = Date.parse(item?.endTime || '') || 0;
+    const endTs = rawEndTs > startTs ? rawEndTs : startTs ? startTs + 2 * 60 * 60 * 1000 : 0;
     const rawStatus = String(item?.status || '').toUpperCase();
+    const rawTag = String(item?.tag || rawItem?.tag || '').toUpperCase();
     const isCancelled =
       rawStatus === 'CANCELED' ||
       rawStatus === 'CANCELLED' ||
       /class\s*cancel|cancelled/i.test(resolvedTopic);
 
     let liveStatus: 'LIVE' | 'UPCOMING' | 'COMPLETED' = 'COMPLETED';
-    if (!isCancelled && startTs && endTs && now >= startTs && now <= endTs && rawStatus !== 'COMPLETED') {
-      liveStatus = 'LIVE';
-    } else if (!isCancelled && startTs && now < startTs) {
-      liveStatus = 'UPCOMING';
-    } else if (!isCancelled && rawStatus === 'PENDING' && startTs > now) {
-      liveStatus = 'UPCOMING';
-    } else if (!isCancelled && rawStatus === 'LIVE') {
-      liveStatus = 'LIVE';
+    if (!isCancelled) {
+      if (rawTag === 'ENDED' || rawStatus === 'COMPLETED') {
+        liveStatus = 'COMPLETED';
+      } else if (rawTag === 'LIVE' || rawStatus === 'LIVE') {
+        liveStatus = 'LIVE';
+      } else if (startTs && endTs && now >= startTs && now <= endTs) {
+        liveStatus = 'LIVE';
+      } else if (rawTag === 'UPCOMING' || (startTs && now < startTs)) {
+        liveStatus = 'UPCOMING';
+      }
     }
 
     return {
@@ -349,7 +383,28 @@ function enrichScheduleItems(items: any[], details: any): any[] {
       liveStatus,
       homeworkIds: homeworkList,
     };
-  }).sort((a, b) => {
+  });
+
+  // Deduplicate by _id (preferring entries with richer metadata such as urlType/tag/videoDetails)
+  const dedupedMap = new Map<string, any>();
+  for (const item of enriched) {
+    const id = String(item?._id || '');
+    if (!id) continue;
+    const prev = dedupedMap.get(id);
+    if (!prev) {
+      dedupedMap.set(id, item);
+      continue;
+    }
+    const prevScore =
+      (prev.urlType ? 2 : 0) + (prev.tag ? 1 : 0) + (prev.videoDetails ? 2 : 0) + (prev.teacherNames?.length ? 1 : 0);
+    const nextScore =
+      (item.urlType ? 2 : 0) + (item.tag ? 1 : 0) + (item.videoDetails ? 2 : 0) + (item.teacherNames?.length ? 1 : 0);
+    if (nextScore > prevScore) {
+      dedupedMap.set(id, item);
+    }
+  }
+
+  return Array.from(dedupedMap.values()).sort((a, b) => {
     const ta = Date.parse(a?.startTime || a?.date || '') || 0;
     const tb = Date.parse(b?.startTime || b?.date || '') || 0;
     return ta - tb;
@@ -408,7 +463,7 @@ function b64UrlToHex(b64url: string): string {
 
 function extractYoutubeEmbed(url: string): string | null {
   if (!url) return null;
-  const regExp = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
+  const regExp = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?|live|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
   const match = url.match(regExp);
   if (match && match[1]) {
     return `https://www.youtube.com/embed/${match[1]}?autoplay=1&rel=0`;
@@ -1073,7 +1128,7 @@ export function createApiApp() {
     }
   });
 
-  // 5. Resolve real video stream (passes token+cookie to play.php, retries transient failures, decrypts AES-128-CBC + attachments)
+  // 5. Resolve real video stream (passes token+cookie to play.php, checks live schedule-details & contents fallback, decrypts AES-128-CBC + attachments)
   app.get('/api/stream', async (req, res) => {
     const batchId = String(req.query.batch_id || '');
     const programId = String(req.query.program_id || '');
@@ -1082,12 +1137,16 @@ export function createApiApp() {
     const videoId = String(req.query.video_id || '');
     const findKey = String(req.query.find_key || '');
     const videoDetailsId = String(req.query.video_details_id || '');
+    const parentScheduleId = String(req.query.parent_schedule_id || '');
     const videoName = String(req.query.video_name || 'Lecture');
     const videoImg = String(req.query.video_img || '');
-    const videoType = String(req.query.video_type || 'new');
+    const requestedVideoType = String(req.query.video_type || 'new');
+    const videoType = requestedVideoType === 'youtube' ? 'youtube' : 'new';
     const playType = String(req.query.play_type || 'Lecture');
     const rawVideoUrl = String(req.query.video_url || '');
     const typeId = String(req.query.typeId || '');
+    const isLiveHint = String(req.query.is_live || '') === '1';
+    const urlTypeHint = String(req.query.url_type || '').toLowerCase();
 
     try {
       // Handle YouTube URLs directly (by videoType OR by URL pattern)
@@ -1102,9 +1161,11 @@ export function createApiApp() {
         });
       }
 
-      const candidateIds = Array.from(
-        new Set([videoId, findKey, videoDetailsId].filter((id) => Boolean(id && id.trim())))
+      const candidateIdSet = new Set(
+        [videoId, findKey, videoDetailsId, parentScheduleId].filter((id) => Boolean(id && id.trim()))
       );
+      const candidateBatchSet = new Set([batchId].filter((id) => Boolean(id && id.trim())));
+      const candidateSubjectSet = new Set([subjectId].filter((id) => Boolean(id && id.trim())));
 
       let token = '';
       try {
@@ -1118,16 +1179,80 @@ export function createApiApp() {
       let keyValB64 = '';
       let drmType = '';
       let attachmentsRaw = '';
+      let detectedUrlType = urlTypeHint;
+      let detectedLiveNoVod = false;
+
+      // Inspect schedule-details for live / scheduled classes to uncover parentBatchId, ytStreamUrl, newCdnLink, or updated VOD videoDetails
+      if (!programId && batchId && subjectId && (isLiveHint || !videoDetailsId || parentScheduleId || urlTypeHint === 'awsvideo' || urlTypeHint === 'vimeo')) {
+        const schedIdsToProbe = Array.from(new Set([videoId, parentScheduleId].filter(Boolean)));
+        for (const sId of schedIdsToProbe) {
+          try {
+            const sdRes = await fetchVidcloudApiRaw(
+              `/v1/batches/${encodeURIComponent(batchId)}/subject/${encodeURIComponent(subjectId)}/schedule/${encodeURIComponent(sId)}/schedule-details`
+            );
+            const sd = sdRes.ok ? sdRes.data?.data : null;
+            if (!sd) continue;
+
+            if (sd.urlType) detectedUrlType = String(sd.urlType).toLowerCase();
+            const directCandidate =
+              sd.ytStreamUrl ||
+              sd.newCdnLink ||
+              sd.videoDetails?.embedCode ||
+              sd.videoDetails?.hls_url ||
+              sd.videoDetails?.videoUrl ||
+              sd.url ||
+              '';
+
+            const sdYt = extractYoutubeEmbed(directCandidate);
+            if (sdYt) {
+              return res.json({
+                success: true,
+                isYoutube: true,
+                youtubeEmbedUrl: sdYt,
+                rawUrl: directCandidate,
+                attachments: [],
+              });
+            }
+            if (!resolvedUrl && directCandidate && /\.(m3u8|mpd|mp4)(\?|$)/i.test(directCandidate)) {
+              resolvedUrl = directCandidate;
+            }
+
+            if (sd.batchId) candidateBatchSet.add(String(sd.batchId));
+            if (sd.subject?.slug) candidateSubjectSet.add(String(sd.subject.slug));
+            if (sd.parentScheduleId) candidateIdSet.add(String(sd.parentScheduleId));
+            if (Array.isArray(sd.scheduleIds)) {
+              for (const linkedId of sd.scheduleIds) {
+                if (linkedId) candidateIdSet.add(String(linkedId));
+              }
+            }
+            if (sd.videoDetails) {
+              if (sd.videoDetails.id) candidateIdSet.add(String(sd.videoDetails.id));
+              if (sd.videoDetails._id) candidateIdSet.add(String(sd.videoDetails._id));
+              if (sd.videoDetails.findKey) candidateIdSet.add(String(sd.videoDetails.findKey));
+            } else if ((detectedUrlType === 'awsvideo' || detectedUrlType === 'vimeo') && !directCandidate) {
+              detectedLiveNoVod = true;
+            }
+          } catch {
+            // continue to play.php attempts
+          }
+        }
+      }
+
+      const candidateIds = Array.from(candidateIdSet);
+      const candidateBatches = Array.from(candidateBatchSet);
+      const candidateSubjects = Array.from(candidateSubjectSet);
 
       const tryPlayPhp = async (
         candidateVid: string,
         currentToken: string,
         overrideType?: string,
-        overrideTypeId?: string
+        overrideTypeId?: string,
+        overrideBatchId?: string,
+        overrideSubjectId?: string
       ) => {
         const params = new URLSearchParams({
-          batch_id: batchId,
-          subject_id: subjectId,
+          batch_id: overrideBatchId || batchId,
+          subject_id: overrideSubjectId || subjectId,
           topic_id: topicId,
           video_id: candidateVid,
           video_name: videoName,
@@ -1203,7 +1328,7 @@ export function createApiApp() {
       // Up to 5 attempts alternating cached token, upstream server pool (no token), and refreshed token
       // to avoid reusing a 429 rate-limited PenPencil token.
       // For Khazana (programId present), try upstream pool first since Khazana uses play.php's Khazana pool.
-      const backoffMs = [0, 400, 800, 1200, 1600];
+      const backoffMs = [0, 350, 700, 1100, 1400];
       for (let attempt = 0; attempt < backoffMs.length && !resolvedUrl; attempt++) {
         if (backoffMs[attempt] > 0) {
           await new Promise((r) => setTimeout(r, backoffMs[attempt]));
@@ -1249,19 +1374,76 @@ export function createApiApp() {
           }
         }
 
-        // On retry attempts, also check secondary candidate IDs (e.g. findKey / videoDetailsId) if different
-        if (attempt >= 1 && candidateIds.length > 1) {
-          for (const altId of candidateIds.slice(1)) {
-            const altAttempt = await tryPlayPhp(altId, attemptToken);
-            if (altAttempt.ok && altAttempt.urlOut) {
-              resolvedUrl = altAttempt.urlOut;
-              keyIdB64 = altAttempt.kId || '';
-              keyValB64 = altAttempt.kVal || '';
-              drmType = altAttempt.dType || '';
-              attachmentsRaw = altAttempt.attRaw || '';
-              break;
+        // On retry attempts, also check secondary candidate IDs (e.g. findKey / videoDetailsId / parentScheduleId) and parent batch IDs
+        if (attempt >= 1 && (candidateIds.length > 1 || candidateBatches.length > 1)) {
+          for (const altBatch of candidateBatches) {
+            const altSubj = candidateSubjects[0] || subjectId;
+            for (const altId of candidateIds) {
+              if (altBatch === batchId && altId === primaryId) continue;
+              const altAttempt = await tryPlayPhp(altId, attemptToken, undefined, undefined, altBatch, altSubj);
+              if (altAttempt.ok && altAttempt.urlOut) {
+                resolvedUrl = altAttempt.urlOut;
+                keyIdB64 = altAttempt.kId || '';
+                keyValB64 = altAttempt.kVal || '';
+                drmType = altAttempt.dType || '';
+                attachmentsRaw = altAttempt.attRaw || '';
+                break;
+              }
+            }
+            if (resolvedUrl) break;
+          }
+        }
+      }
+
+      // Topic contents fallback: catch recently-converted live-to-VOD lectures whose updated videoDetails/url appear in topic contents
+      if (!resolvedUrl && !programId && batchId && subjectId && topicId) {
+        try {
+          const cRes = await fetchVidcloudApiRaw(
+            `/v2/batches/${encodeURIComponent(batchId)}/subject/${encodeURIComponent(subjectId)}/contents?tag=${encodeURIComponent(topicId)}&contentType=videos&page=1`
+          );
+          const list: any[] = cRes.ok && Array.isArray(cRes.data?.data) ? cRes.data.data : [];
+          const cleanTargetName = videoName.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+          const matched = list.find((item) => {
+            const ids = [item?._id, item?.videoDetails?.id, item?.videoDetails?._id, item?.videoDetails?.findKey];
+            if (ids.some((id) => id && candidateIdSet.has(String(id)))) return true;
+            const itemTopic = String(item?.topic || item?.videoDetails?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            return Boolean(cleanTargetName && itemTopic && itemTopic === cleanTargetName);
+          });
+          if (matched) {
+            const mUrl =
+              matched.videoDetails?.embedCode ||
+              matched.videoDetails?.hls_url ||
+              matched.videoDetails?.videoUrl ||
+              matched.url ||
+              '';
+            const mYt = extractYoutubeEmbed(mUrl);
+            if (mYt) {
+              return res.json({
+                success: true,
+                isYoutube: true,
+                youtubeEmbedUrl: mYt,
+                rawUrl: mUrl,
+                attachments: [],
+              });
+            }
+            if (mUrl && /\.(m3u8|mpd|mp4)(\?|$)/i.test(mUrl)) {
+              resolvedUrl = mUrl;
+            } else {
+              const newVdId = matched.videoDetails?.id || matched.videoDetails?._id || matched._id;
+              if (newVdId && !candidateIdSet.has(String(newVdId))) {
+                const retryMatched = await tryPlayPhp(String(newVdId), token || '');
+                if (retryMatched.ok && retryMatched.urlOut) {
+                  resolvedUrl = retryMatched.urlOut;
+                  keyIdB64 = retryMatched.kId || '';
+                  keyValB64 = retryMatched.kVal || '';
+                  drmType = retryMatched.dType || '';
+                  attachmentsRaw = retryMatched.attRaw || '';
+                }
+              }
             }
           }
+        } catch {
+          // ignore
         }
       }
 
@@ -1271,10 +1453,14 @@ export function createApiApp() {
       }
 
       if (!resolvedUrl) {
+        const isLiveRestricted = (isLiveHint || detectedLiveNoVod) && (detectedUrlType === 'awsvideo' || detectedUrlType === 'vimeo');
         return res.status(404).json({
           success: false,
-          message:
-            'Video stream URL could not be resolved for this lecture. It may not have uploaded VOD yet or upstream is busy—please tap Retry.',
+          liveStreamPending: isLiveRestricted,
+          urlType: detectedUrlType || undefined,
+          message: isLiveRestricted
+            ? 'Yeh Live class abhi AWS/PW live stream par chal rahi hai (VOD abhi generate nahi hua hai). Class end hone ke baad Recorded lecture play ho jayega — ya kuch der baad Retry dabayein.'
+            : 'Video stream URL could not be resolved for this lecture. It may not have uploaded VOD yet or upstream is busy—please tap Retry.',
         });
       }
 
@@ -1430,13 +1616,27 @@ export function createApiApp() {
       }
 
       const contentType = upstream.headers.get('content-type') || '';
-      const isM3u8 =
+      const maybeTextPlaylist =
         parsedTarget.pathname.toLowerCase().endsWith('.m3u8') ||
         contentType.includes('mpegurl') ||
-        contentType.includes('x-mpegURL');
+        contentType.includes('x-mpegURL') ||
+        contentType.startsWith('text/');
 
-      if (isM3u8) {
-        const text = await upstream.text();
+      let playlistText: string | null = null;
+      let rawBuffer: Buffer | null = null;
+      if (maybeTextPlaylist) {
+        playlistText = await upstream.text();
+      } else {
+        rawBuffer = Buffer.from(await upstream.arrayBuffer());
+        if (rawBuffer.subarray(0, 7).toString('utf8') === '#EXTM3U') {
+          playlistText = rawBuffer.toString('utf8');
+        }
+      }
+
+      const isM3u8 = Boolean(playlistText && (parsedTarget.pathname.toLowerCase().endsWith('.m3u8') || contentType.includes('mpegurl') || playlistText.trimStart().startsWith('#EXTM3U')));
+
+      if (isM3u8 && playlistText !== null) {
+        const text = playlistText;
         const currentQuery = parsedTarget.search ? parsedTarget.search.slice(1) : sigQuery;
 
         // Compute CloudFront root base for /get-hls-key rewriting:
@@ -1448,6 +1648,13 @@ export function createApiApp() {
             : parsedTarget.pathname.replace(/[^/]+$/, '');
         const cfRoot = `${parsedTarget.origin}${cfRootPath}`;
         const currentDir = `${parsedTarget.origin}${parsedTarget.pathname.replace(/[^/]+$/, '')}`;
+
+        const proxyUriAttr = (rawUri: string) => {
+          const abs = rawUri.startsWith('http') ? rawUri : new URL(rawUri, currentDir).toString();
+          return `/api/hls-proxy?url=${encodeURIComponent(abs)}${
+            currentQuery ? `&sig=${encodeURIComponent(currentQuery)}` : ''
+          }`;
+        };
 
         const rewritten = text
           .split(/\r?\n/)
@@ -1471,41 +1678,20 @@ export function createApiApp() {
               });
             }
 
-            // Rewrite #EXT-X-MAP URI (if fMP4 HLS)
-            if (trimmed.startsWith('#EXT-X-MAP')) {
-              return trimmed.replace(/URI="([^"]+)"/i, (_m, mapUri) => {
-                const absMap = mapUri.startsWith('http')
-                  ? mapUri
-                  : new URL(mapUri, currentDir).toString();
-                const proxiedMap = `/api/hls-proxy?url=${encodeURIComponent(absMap)}${
-                  currentQuery ? `&sig=${encodeURIComponent(currentQuery)}` : ''
-                }`;
-                return `URI="${proxiedMap}"`;
-              });
-            }
-
-            // Rewrite #EXT-X-MEDIA URI (if separate audio track)
-            if (trimmed.startsWith('#EXT-X-MEDIA')) {
-              return trimmed.replace(/URI="([^"]+)"/i, (_m, mediaUri) => {
-                const absMedia = mediaUri.startsWith('http')
-                  ? mediaUri
-                  : new URL(mediaUri, currentDir).toString();
-                const proxiedMedia = `/api/hls-proxy?url=${encodeURIComponent(absMedia)}${
-                  currentQuery ? `&sig=${encodeURIComponent(currentQuery)}` : ''
-                }`;
-                return `URI="${proxiedMedia}"`;
-              });
+            // Rewrite #EXT-X-MAP / #EXT-X-MEDIA / LL-HLS #EXT-X-PART / #EXT-X-PRELOAD-HINT URIs
+            if (
+              trimmed.startsWith('#EXT-X-MAP') ||
+              trimmed.startsWith('#EXT-X-MEDIA') ||
+              trimmed.startsWith('#EXT-X-PART:') ||
+              trimmed.startsWith('#EXT-X-PRELOAD-HINT')
+            ) {
+              return trimmed.replace(/URI="([^"]+)"/i, (_m, attrUri) => `URI="${proxyUriAttr(attrUri)}"`);
             }
 
             if (trimmed.startsWith('#')) return line;
 
             // Regular URI line (sub-playlist or .ts segment)
-            const absLine = trimmed.startsWith('http')
-              ? trimmed
-              : new URL(trimmed, currentDir).toString();
-            return `/api/hls-proxy?url=${encodeURIComponent(absLine)}${
-              currentQuery ? `&sig=${encodeURIComponent(currentQuery)}` : ''
-            }`;
+            return proxyUriAttr(trimmed);
           })
           .join('\n');
 
@@ -1524,7 +1710,11 @@ export function createApiApp() {
       const acceptRanges = upstream.headers.get('accept-ranges');
       if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
 
-      const buf = Buffer.from(await upstream.arrayBuffer());
+      const buf =
+        rawBuffer ??
+        (playlistText !== null
+          ? Buffer.from(playlistText, 'utf8')
+          : Buffer.from(await upstream.arrayBuffer()));
       return res.send(buf);
     } catch (err: any) {
       return res.status(502).send(`Proxy error: ${err?.message || 'Unknown'}`);

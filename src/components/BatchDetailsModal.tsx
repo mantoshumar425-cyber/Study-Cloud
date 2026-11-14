@@ -70,6 +70,7 @@ export interface PlayLecturePayload {
   videoId: string;
   findKey?: string;
   videoDetailsId?: string;
+  parentScheduleId?: string;
   typeId?: string;
   title: string;
   videoImg?: string;
@@ -77,6 +78,8 @@ export interface PlayLecturePayload {
   playType: string;
   rawVideoUrl?: string;
   durationText?: string;
+  isLive?: boolean;
+  urlType?: string;
 }
 
 interface BatchDetailsModalProps {
@@ -483,6 +486,12 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   };
 
   const handlePlayScheduledClass = (cls: ScheduledClassItem) => {
+    if (cls.isCancelled) {
+      setScheduleNoticeMsg(
+        `${cls.subjectName || 'Class'}: ${cls.topic || 'This class was cancelled.'}`
+      );
+      return;
+    }
     if (cls.liveStatus === 'UPCOMING') {
       setScheduleNoticeMsg(
         `${cls.topic} (${cls.subjectName || 'Class'}) starts at ${formatTimeRangeIst(cls.startTime, cls.endTime)} IST.`
@@ -491,8 +500,15 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     }
     setScheduleNoticeMsg(null);
     const urlType = (cls.urlType || '').toLowerCase();
-    const isYt = urlType === 'youtube';
-    const rawUrl = cls.videoDetails?.embedCode || cls.videoDetails?.videoUrl || cls.url || '';
+    const rawUrl =
+      cls.ytStreamUrl ||
+      cls.newCdnLink ||
+      cls.videoDetails?.embedCode ||
+      cls.videoDetails?.hls_url ||
+      cls.videoDetails?.videoUrl ||
+      cls.url ||
+      '';
+    const isYt = urlType === 'youtube' || /youtu\.?be/i.test(rawUrl);
     const subjSlug = cls.subjectSlug || cls.batchSubjectId || 'subject';
     const topicId = cls.topicId || cls.tags?.[0]?._id || cls._id;
     onPlayLecture({
@@ -505,6 +521,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       videoId: cls._id,
       findKey: cls.videoDetails?.findKey,
       videoDetailsId: cls.videoDetails?.id || cls.videoDetails?._id,
+      parentScheduleId: cls.parentScheduleId,
       typeId: cls.typeId,
       title: cls.topic || cls.videoDetails?.name || 'Scheduled Lecture',
       videoImg: cls.videoDetails?.image || '',
@@ -512,6 +529,8 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       playType: cls.isDPPVideos ? 'solutions' : 'Lecture',
       rawVideoUrl: rawUrl,
       durationText: cls.videoDetails?.duration,
+      isLive: cls.liveStatus === 'LIVE',
+      urlType: cls.urlType,
     });
   };
 
@@ -1447,6 +1466,11 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2.5">
+                    {scheduleNoticeMsg && (
+                      <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3.5 py-2 text-xs text-sky-300">
+                        {scheduleNoticeMsg}
+                      </div>
+                    )}
                     <div
                       onScroll={(e) => {
                         const el = e.currentTarget;
