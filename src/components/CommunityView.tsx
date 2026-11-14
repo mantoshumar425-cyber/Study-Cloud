@@ -221,19 +221,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   return (
-    <div className="space-y-8">
-      {/* Large Community Header */}
-      <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-9">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm sm:text-base font-bold text-[var(--primary-color)]">
-              <Users className="h-5 w-5" />
+    <div className="space-y-5">
+      {/* Compact Community Header */}
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--primary-color)]">
+              <Users className="h-4 w-4" />
               <span>Study Cloud · PW Community Proxy & Study Lounge</span>
             </div>
-            <h1 className="font-['Sora'] text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)]">
+            <h1 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
               PW Community & Batch Updates
             </h1>
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-3xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
               Live batch announcements, faculty updates, study notes, and peer doubt discussions inside
               Study Cloud — completely ad-free without external redirects.
             </p>
@@ -243,28 +243,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             type="button"
             onClick={() => loadPwCommunity(customBatchId || undefined)}
             disabled={loadingFeed}
-            className="flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-6 py-3.5 text-sm sm:text-base font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition whitespace-nowrap"
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition whitespace-nowrap"
           >
-            <RefreshCw className={`h-4 w-4 text-[var(--primary-color)] ${loadingFeed ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 text-[var(--primary-color)] ${loadingFeed ? 'animate-spin' : ''}`} />
             <span>Refresh PW Feed</span>
           </button>
         </div>
       </div>
 
-      {/* Main Expanded 2-Column Community Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-7 items-start">
+      {/* 2-Column Community Layout */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
         {/* Left: Live PW Community Announcements Feed via Proxy (7 cols) */}
-        <div className="xl:col-span-7 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-              <Bell className="h-6 w-6 text-amber-400" />
+        <div className="xl:col-span-7 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Bell className="h-5 w-5 text-amber-400" />
               <span>PW Community Live Feed</span>
             </h2>
 
             <select
               value={customBatchId}
               onChange={(e) => setCustomBatchId(e.target.value)}
-              className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none max-w-xs"
+              className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none max-w-xs"
             >
               <option value="">Active & Enrolled Batches</option>
               {candidateBatches.map((b) => (
@@ -277,11 +277,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           {/* Batch Filter Strip */}
           {pwChannels.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               <button
                 type="button"
                 onClick={() => setSelectedBatchFilter('all')}
-                className={`shrink-0 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition ${
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                   selectedBatchFilter === 'all'
                     ? 'bg-[var(--primary-color)] text-white'
                     : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -294,7 +294,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   key={ch.batchId}
                   type="button"
                   onClick={() => setSelectedBatchFilter(ch.batchId)}
-                  className={`shrink-0 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition ${
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                     selectedBatchFilter === ch.batchId
                       ? 'bg-[var(--primary-color)] text-white'
                       : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -307,27 +307,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           )}
 
           {loadingFeed ? (
-            <div className="flex items-center justify-center py-14 gap-3 text-sm sm:text-base text-[var(--text-secondary)]">
-              <Loader2 className="h-6 w-6 animate-spin text-[var(--primary-color)]" />
+            <div className="flex items-center justify-center py-10 gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
               <span>Syncing PW Community notices via proxy...</span>
             </div>
           ) : feedError ? (
-            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs sm:text-sm text-red-300">
               {feedError}
             </div>
           ) : filteredPwFeed.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-10 text-center text-sm sm:text-base text-[var(--text-secondary)]">
+            <div className="rounded-xl border border-dashed border-[var(--card-border)] p-8 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
               No announcements found for this selection. Choose another batch above.
             </div>
           ) : (
-            <div className="space-y-4 max-h-[760px] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
               {filteredPwFeed.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 space-y-3"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 space-y-2.5"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-['Sora'] font-extrabold text-[var(--primary-color)] truncate">
                         {item.batchName}
                       </span>
@@ -341,18 +341,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     )}
                   </div>
 
-                  <p className="text-sm sm:text-base text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
+                  <p className="text-xs sm:text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
                     {item.announcement}
                   </p>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--card-border)] pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-[var(--card-border)] pt-2.5">
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
                         onClick={() => handleOpenChannelBatch(item.batchId, item.batchName)}
-                        className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--primary-color)] hover:underline"
+                        className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
                       >
-                        <BookOpen className="h-4 w-4" />
+                        <BookOpen className="h-3.5 w-3.5" />
                         <span>Open Batch</span>
                       </button>
 
@@ -361,9 +361,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           href={buildPdfProxyUrl(item.attachmentUrl, item.attachmentName || 'notice')}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-emerald-400 hover:underline"
+                          className="flex items-center gap-1 text-xs font-bold text-emerald-400 hover:underline"
                         >
-                          <FileText className="h-4 w-4" />
+                          <FileText className="h-3.5 w-3.5" />
                           <span>View Notice PDF</span>
                         </a>
                       )}
@@ -372,9 +372,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onAskAi(`Summarize and explain key dates/action items from this notice:\n${item.announcement}`)}
-                      className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--primary-color)]"
+                      className="flex items-center gap-1 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--primary-color)]"
                     >
-                      <Sparkles className="h-4 w-4" />
+                      <Sparkles className="h-3.5 w-3.5" />
                       <span>Ask Study AI</span>
                     </button>
                   </div>
@@ -385,28 +385,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
 
         {/* Right: Study Lounge Discussion Board (5 cols) */}
-        <div className="xl:col-span-5 space-y-5">
+        <div className="xl:col-span-5 space-y-4">
           {/* Post Composer */}
           <form
             onSubmit={handlePublish}
-            className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 space-y-4"
+            className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-3"
           >
-            <h2 className="font-['Sora'] text-xl font-extrabold text-[var(--text-primary)]">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
               Student Study Lounge
             </h2>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <input
                 type="text"
                 value={newAuthor}
                 onChange={(e) => setNewAuthor(e.target.value)}
                 placeholder="Your name"
-                className="flex-1 min-w-[140px] rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+                className="flex-1 min-w-[120px] rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
               />
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value as CommunityPost['category'])}
-                className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] focus:outline-none"
+                className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:outline-none"
               >
                 <option value="Doubt">Doubt</option>
                 <option value="Study Tip">Study Tip</option>
@@ -418,34 +418,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <textarea
               value={newText}
               onChange={(e) => setNewText(e.target.value)}
-              rows={3}
+              rows={2}
               placeholder="Share a quick formula, ask a peer doubt, or post your study progress..."
-              className="w-full resize-none rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3.5 text-sm sm:text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
+              className="w-full resize-none rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
             />
 
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              <span className="text-xs text-[var(--text-secondary)]">
                 Saved in your Study Cloud lounge
               </span>
               <button
                 type="submit"
                 disabled={!newText.trim()}
-                className="flex items-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition"
+                className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition"
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-3.5 w-3.5" />
                 <span>Post Note</span>
               </button>
             </div>
           </form>
 
           {/* Filter Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {(['All', 'Doubt', 'Study Tip', 'Formula Note', 'Milestone'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setCategoryFilter(cat)}
-                className={`shrink-0 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition ${
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                   categoryFilter === cat
                     ? 'bg-[var(--primary-color)] text-white'
                     : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -457,14 +457,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           {/* Posts List */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filteredPosts.map((post) => (
               <div
                 key={post.id}
-                className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-5 sm:p-6 space-y-3.5"
+                className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-3.5 sm:p-4 space-y-2.5"
               >
-                <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-secondary)]">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-bold text-[var(--text-primary)] truncate">
                       {post.author}
                     </span>
@@ -479,28 +479,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </span>
                 </div>
 
-                <p className="text-sm sm:text-base text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
+                <p className="text-xs sm:text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
                   {post.content}
                 </p>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-3 text-xs sm:text-sm">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-2.5 text-xs">
+                  <div className="flex items-center gap-3.5">
                     <button
                       type="button"
                       onClick={() => handleToggleLike(post.id)}
-                      className={`flex items-center gap-1.5 font-bold transition ${
+                      className={`flex items-center gap-1 font-bold transition ${
                         post.liked ? 'text-[var(--primary-color)]' : 'text-[var(--text-secondary)]'
                       }`}
                     >
-                      <ThumbsUp className="h-4 w-4" />
+                      <ThumbsUp className="h-3.5 w-3.5" />
                       <span className="font-mono tabular-nums">{post.likes}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setReplyOpenId(replyOpenId === post.id ? null : post.id)}
-                      className="flex items-center gap-1.5 font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      className="flex items-center gap-1 font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     >
-                      <MessageSquare className="h-4 w-4" />
+                      <MessageSquare className="h-3.5 w-3.5" />
                       <span>Reply ({post.replies.length})</span>
                     </button>
                   </div>
@@ -508,19 +508,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onAskAi(post.content)}
-                    className="flex items-center gap-1.5 font-bold text-[var(--primary-color)] hover:underline"
+                    className="flex items-center gap-1 font-bold text-[var(--primary-color)] hover:underline"
                   >
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="h-3.5 w-3.5" />
                     <span>Solve with AI</span>
                   </button>
                 </div>
 
                 {post.replies.length > 0 && (
-                  <div className="space-y-2 border-t border-[var(--card-border)] pt-3">
+                  <div className="space-y-1.5 border-t border-[var(--card-border)] pt-2.5">
                     {post.replies.map((rep) => (
                       <div
                         key={rep.id}
-                        className="rounded-xl bg-[var(--bg-secondary)] px-4 py-2.5 text-xs sm:text-sm space-y-0.5"
+                        className="rounded-xl bg-[var(--bg-secondary)] px-3 py-2 text-xs space-y-0.5"
                       >
                         <div className="font-bold text-[var(--text-primary)]">{rep.author}</div>
                         <div className="text-[var(--text-secondary)]">{rep.text}</div>
@@ -536,12 +536,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Write a helpful reply..."
-                      className="flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+                      className="flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => handleAddReply(post.id)}
-                      className="rounded-xl bg-[var(--primary-color)] px-4 py-2.5 text-sm font-bold text-white"
+                      className="rounded-xl bg-[var(--primary-color)] px-3.5 py-2 text-xs sm:text-sm font-bold text-white"
                     >
                       Send
                     </button>

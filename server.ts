@@ -206,9 +206,19 @@ function mergeScheduleById(primary: any[], secondary: any[]): any[] {
   });
 }
 
+function resolveTeacherAvatarUrl(imgObj: any): string {
+  if (!imgObj || typeof imgObj !== 'object') return '';
+  const base = String(imgObj.baseUrl || '').replace(/^https?:\/\/cors\.testfile\.eu\.org\//i, 'https://');
+  const key = String(imgObj.key || '').trim();
+  if (!base || !key) return '';
+  return `${base.endsWith('/') ? base : `${base}/`}${key.replace(/^\//, '')}`;
+}
+
 function buildTeacherAndSubjectMaps(details: any) {
   const teacherMap = new Map<string, string>();
+  const teacherImageMap = new Map<string, string>();
   const subjectById = new Map<string, { name: string; slug: string }>();
+  const subjectPrimaryTeacherMap = new Map<string, { name: string; image: string }>();
 
   const subjects = Array.isArray(details?.subjects) ? details.subjects : [];
   for (const subj of subjects) {
@@ -221,16 +231,22 @@ function buildTeacherAndSubjectMaps(details: any) {
     const tList = Array.isArray(subj?.teacherIds) ? subj.teacherIds : [];
     for (const t of tList) {
       if (t?._id) {
-        const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ').trim();
-        if (fullName) teacherMap.set(String(t._id), fullName);
+        const tId = String(t._id);
+        const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.name || '';
+        const imgUrl = resolveTeacherAvatarUrl(t.imageId);
+        if (fullName) teacherMap.set(tId, fullName);
+        if (imgUrl) teacherImageMap.set(tId, imgUrl);
+        if (subj?._id && !subjectPrimaryTeacherMap.has(String(subj._id)) && (fullName || imgUrl)) {
+          subjectPrimaryTeacherMap.set(String(subj._id), { name: fullName, image: imgUrl });
+        }
       }
     }
   }
-  return { teacherMap, subjectById };
+  return { teacherMap, teacherImageMap, subjectById, subjectPrimaryTeacherMap };
 }
 
 function enrichScheduleItems(items: any[], details: any): any[] {
-  const { teacherMap, subjectById } = buildTeacherAndSubjectMaps(details);
+  const { teacherMap, teacherImageMap, subjectById, subjectPrimaryTeacherMap } = buildTeacherAndSubjectMaps(details);
   const now = Date.now();
 
   return items.map((rawItem) => {
@@ -244,6 +260,7 @@ function enrichScheduleItems(items: any[], details: any): any[] {
         : null);
     const item = wrapper ? { ...rawItem, ...wrapper, _id: rawItem._id || wrapper._id, type: rawItem.type || wrapper.type } : rawItem;
 
+    const batchSubjIdStr = String(item?.batchSubjectId || item?.subjectId?._id || '');
     const subjMeta =
       (item?.batchSubjectId && subjectById.get(String(item.batchSubjectId))) ||
       (item?.subjectId?._id && subjectById.get(String(item.subjectId._id))) ||
@@ -252,26 +269,30 @@ function enrichScheduleItems(items: any[], details: any): any[] {
     const subjectSlug = item?.subjectId?.slug || subjMeta?.slug || String(item?.batchSubjectId || '');
 
     const rawTeachers = Array.isArray(item?.teachers) ? item.teachers : [];
-    const teacherNames = rawTeachers
-      .map((t: any) => {
-        if (typeof t === 'string') return teacherMap.get(t) || '';
-        const name = [t?.firstName, t?.lastName].filter(Boolean).join(' ').trim() || t?.name || '';
-        return name;
-      })
-      .filter(Boolean);
+    const teacherNames: string[] = [];
+    const teacherImages: string[] = [];
 
-    const startTs = Date.parse(item?.startTime || item?.date || '') || 0;
-    const endTs = Date.parse(item?.endTime || '') || (startTs ? startTs + 2 * 60 * 60 * 1000 : 0);
-    const rawStatus = String(item?.status || '').toUpperCase();
-    let liveStatus: 'LIVE' | 'UPCOMING' | 'COMPLETED' = 'COMPLETED';
-    if (startTs && endTs && now >= startTs && now <= endTs && rawStatus !== 'COMPLETED' && rawStatus !== 'CANCELED') {
-      liveStatus = 'LIVE';
-    } else if (startTs && now < startTs) {
-      liveStatus = 'UPCOMING';
-    } else if (rawStatus === 'PENDING' && startTs > now) {
-      liveStatus = 'UPCOMING';
-    } else if (rawStatus === 'LIVE') {
-      liveStatus = 'LIVE';
+    for (const t of rawTeachers) {
+      if (typeof t === 'string') {
+        const name = teacherMap.get(t) || '';
+        const img = teacherImageMap.get(t) || '';
+        if (name) teacherNames.push(name);
+        if (img) teacherImages.push(img);
+      } else if (t && typeof t === 'object') {
+        const tId = String(t?._id || '');
+        const name = [t?.firstName, t?.lastName].filter(Boolean).join(' ').trim() || t?.name || (tId ? teacherMap.get(tId) || '' : '');
+        const img = resolveTeacherAvatarUrl(t?.imageId) || (tId ? teacherImageMap.get(tId) || '' : '');
+        if (name) teacherNames.push(name);
+        if (img) teacherImages.push(img);
+      }
+    }
+
+    const subjPrimaryTeacher = batchSubjIdStr ? subjectPrimaryTeacherMap.get(batchSubjIdStr) : undefined;
+    if (teacherNames.length === 0 && subjPrimaryTeacher?.name) {
+      teacherNames.push(subjPrimaryTeacher.name);
+    }
+    if (teacherImages.length === 0 && subjPrimaryTeacher?.image) {
+      teacherImages.push(subjPrimaryTeacher.image);
     }
 
     const homeworkList = Array.isArray(item?.homeworkIds)
@@ -292,6 +313,25 @@ function enrichScheduleItems(items: any[], details: any): any[] {
       rawItem?.topic ||
       'Scheduled Session';
 
+    const startTs = Date.parse(item?.startTime || item?.date || '') || 0;
+    const endTs = Date.parse(item?.endTime || '') || (startTs ? startTs + 2 * 60 * 60 * 1000 : 0);
+    const rawStatus = String(item?.status || '').toUpperCase();
+    const isCancelled =
+      rawStatus === 'CANCELED' ||
+      rawStatus === 'CANCELLED' ||
+      /class\s*cancel|cancelled/i.test(resolvedTopic);
+
+    let liveStatus: 'LIVE' | 'UPCOMING' | 'COMPLETED' = 'COMPLETED';
+    if (!isCancelled && startTs && endTs && now >= startTs && now <= endTs && rawStatus !== 'COMPLETED') {
+      liveStatus = 'LIVE';
+    } else if (!isCancelled && startTs && now < startTs) {
+      liveStatus = 'UPCOMING';
+    } else if (!isCancelled && rawStatus === 'PENDING' && startTs > now) {
+      liveStatus = 'UPCOMING';
+    } else if (!isCancelled && rawStatus === 'LIVE') {
+      liveStatus = 'LIVE';
+    }
+
     return {
       ...item,
       type: outerType || item?.type,
@@ -302,6 +342,10 @@ function enrichScheduleItems(items: any[], details: any): any[] {
       topicName: firstTag?.name || '',
       topicId: firstTag?._id || '',
       teacherNames,
+      teacherImages,
+      teacherImage: teacherImages[0] || item?.videoDetails?.image || '',
+      tag: String(item?.tag || rawItem?.tag || ''),
+      isCancelled,
       liveStatus,
       homeworkIds: homeworkList,
     };
@@ -431,49 +475,13 @@ export function createApiApp() {
     }
   });
 
-  // 2. Batch details + subjects + announcements + mahapack mapping
-  app.get('/api/batch/:batchId', async (req, res) => {
-    const { batchId } = req.params;
-    try {
-      const [detailsRes, announcementsRes] = await Promise.allSettled([
-        fetchVidcloudApi(`/v3/batches/${encodeURIComponent(batchId)}/details?type=EXPLORE_LEAD`),
-        fetchVidcloudApi(`/v1/batches/${encodeURIComponent(batchId)}/announcement?page=1`),
-      ]);
+  const sanitizeAnnouncementText = (txt: string) =>
+    String(txt || '')
+      .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog|wa\.me|chat\.whatsapp\.com|whatsapp\.com)[^\s)]*/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
-      const details = detailsRes.status === 'fulfilled' ? detailsRes.value?.data || null : null;
-      const announcements =
-        announcementsRes.status === 'fulfilled' && Array.isArray(announcementsRes.value?.data)
-          ? announcementsRes.value.data
-          : [];
-
-      let mahapackBatches: any[] = [];
-      if (!details?.subjects?.length || details?.type === 'MAHAPACK') {
-        try {
-          const mp = await fetchVidcloudApi(
-            `/v3/batch-service/mahapack-mapping?mahapackId=${encodeURIComponent(batchId)}&page=1`
-          );
-          if (Array.isArray(mp?.data)) {
-            mahapackBatches = mp.data;
-          }
-        } catch {
-          // ignore if not a mahapack
-        }
-      }
-
-      return res.json({
-        success: true,
-        batch: details,
-        khazanaProgramId: details?.khazanaProgramId || null,
-        subjects: details?.subjects || [],
-        mahapackBatches,
-        announcements,
-      });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, message: err?.message || 'Failed to fetch batch details' });
-    }
-  });
-
-  // 2b. Khazana Curated Programs Catalog + Live Program Endpoints
+  // Curated Khazana programs & batch-to-Khazana fallback matcher
   const KHAZANA_PROGRAMS = [
     {
       programId: '62cd3a81c521a200190acaca',
@@ -576,6 +584,90 @@ export function createApiApp() {
       photo: '',
     },
   ];
+
+  const inferKhazanaProgramId = (details: any): string | null => {
+    if (details?.khazanaProgramId) return String(details.khazanaProgramId);
+    const haystack = [
+      details?.name,
+      details?.byName,
+      details?.class,
+      ...(Array.isArray(details?.exam) ? details.exam : [details?.exam]),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (!haystack) return null;
+
+    if (/upsc|ias|sankalp/.test(haystack)) return '644b86cbc8de6400183fe8a2';
+    if (/neet|yakeen/.test(haystack)) {
+      if (/yakeen|dropper|12\+|13/.test(haystack)) return '62c7bd151690a10018df0307';
+      if (/arjuna|11th|\b11\b/.test(haystack)) return '62cc8e68ae30df00118980dc';
+      return '62cd4128972ca20018b4c092';
+    }
+    if (/jee|prayas/.test(haystack)) {
+      if (/prayas|dropper|12\+|13/.test(haystack)) return '62c7bcec812cae001195d121';
+      if (/arjuna|11th|\b11\b/.test(haystack)) return '62cc7a39ea773600110bec2f';
+      return '62cd3a81c521a200190acaca';
+    }
+    if (/udaan|10th|\b10\b/.test(haystack)) return '62e6939eedf07d00114c9f06';
+    if (/neev|9th|\b9\b/.test(haystack)) return '62e541ce2d69e6001129d8bd';
+    if (/parishram|board|12th|\b12\b/.test(haystack)) return '63e635e601fada0018af9a35';
+    return null;
+  };
+
+  // 2. Batch details + subjects + announcements + mahapack mapping
+  app.get('/api/batch/:batchId', async (req, res) => {
+    const { batchId } = req.params;
+    try {
+      const [detailsRes, announcementsRes] = await Promise.allSettled([
+        fetchVidcloudApi(`/v3/batches/${encodeURIComponent(batchId)}/details?type=EXPLORE_LEAD`),
+        fetchVidcloudApi(`/v1/batches/${encodeURIComponent(batchId)}/announcement?page=1`),
+      ]);
+
+      const details = detailsRes.status === 'fulfilled' ? detailsRes.value?.data || null : null;
+      const rawAnnouncements =
+        announcementsRes.status === 'fulfilled' && Array.isArray(announcementsRes.value?.data)
+          ? announcementsRes.value.data
+          : [];
+
+      const announcements = rawAnnouncements
+        .map((a: any) => {
+          const cleanBody = sanitizeAnnouncementText(a?.announcement || a?.title || '');
+          if (!cleanBody) return null;
+          return {
+            ...a,
+            announcement: cleanBody,
+            attachment: a?.attachment ? normalizeAttachment(a.attachment) : a?.attachment,
+          };
+        })
+        .filter(Boolean);
+
+      let mahapackBatches: any[] = [];
+      if (!details?.subjects?.length || details?.type === 'MAHAPACK') {
+        try {
+          const mp = await fetchVidcloudApi(
+            `/v3/batch-service/mahapack-mapping?mahapackId=${encodeURIComponent(batchId)}&page=1`
+          );
+          if (Array.isArray(mp?.data)) {
+            mahapackBatches = mp.data;
+          }
+        } catch {
+          // ignore if not a mahapack
+        }
+      }
+
+      return res.json({
+        success: true,
+        batch: details,
+        khazanaProgramId: inferKhazanaProgramId(details),
+        subjects: details?.subjects || [],
+        mahapackBatches,
+        announcements,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || 'Failed to fetch batch details' });
+    }
+  });
 
   app.get('/api/khazana/programs', (_req, res) => {
     return res.json({
@@ -2037,12 +2129,6 @@ export function createApiApp() {
   });
 
   // 11. PW Community Proxy (Live Multi-Batch Announcements, Notices & Community Metadata)
-  const sanitizeAnnouncementText = (txt: string) =>
-    String(txt || '')
-      .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog|wa\.me|chat\.whatsapp\.com|whatsapp\.com)[^\s)]*/gi, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-
   app.get('/api/pw/community', async (req, res) => {
     const rawIds = String(req.query.batchIds || '').trim();
     const defaultBatchIds = [

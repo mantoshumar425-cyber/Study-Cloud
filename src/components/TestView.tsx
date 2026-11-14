@@ -483,29 +483,29 @@ export const TestView: React.FC<TestViewProps> = ({
   // RENDER: Results Review Screen
   if (activePack && submitted && summary) {
     return (
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-5 sm:p-6">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4">
           <div>
-            <div className="text-xs font-bold text-[var(--primary-color)]">
+            <div className="text-[11px] font-bold text-[var(--primary-color)]">
               {activePack.exam} · {activePack.subject} · NTA Marking (+4 / -1)
             </div>
-            <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] mt-1">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] mt-0.5">
               {activePack.title} — Result Analysis
             </h2>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => startPack(activePack)}
-              className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+              className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="h-3.5 w-3.5" />
               <span>Retake</span>
             </button>
             <button
               type="button"
               onClick={() => setActivePack(null)}
-              className="rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:opacity-90 transition"
+              className="rounded-xl bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 transition"
             >
               All Tests
             </button>
@@ -513,7 +513,7 @@ export const TestView: React.FC<TestViewProps> = ({
         </div>
 
         {/* Metrics Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Total Score', value: `${summary.score} / ${summary.maxScore}`, accent: 'text-[var(--primary-color)]' },
             { label: 'Accuracy', value: `${summary.accuracy}%`, accent: 'text-emerald-400' },
@@ -522,10 +522,10 @@ export const TestView: React.FC<TestViewProps> = ({
           ].map((stat) => (
             <div
               key={stat.label}
-              className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4"
+              className="rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] p-3.5"
             >
-              <div className="text-xs text-[var(--text-secondary)]">{stat.label}</div>
-              <div className={`mt-1 font-mono tabular-nums text-xl sm:text-2xl font-extrabold ${stat.accent}`}>
+              <div className="text-[11px] text-[var(--text-secondary)]">{stat.label}</div>
+              <div className={`mt-0.5 font-mono tabular-nums text-lg sm:text-xl font-extrabold ${stat.accent}`}>
                 {stat.value}
               </div>
             </div>
@@ -533,7 +533,7 @@ export const TestView: React.FC<TestViewProps> = ({
         </div>
 
         {/* Detailed Question Review */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {activePack.questions.map((q, idx) => {
             const chosen = answers[idx];
             const isCorrect = chosen === q.correctIndex;
@@ -541,7 +541,7 @@ export const TestView: React.FC<TestViewProps> = ({
             return (
               <div
                 key={idx}
-                className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-5 space-y-3"
+                className="rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 space-y-2.5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="font-mono font-bold text-[var(--text-secondary)]">
@@ -556,19 +556,19 @@ export const TestView: React.FC<TestViewProps> = ({
                       'Skipped (0)'
                     ) : isCorrect ? (
                       <>
-                        <CheckCircle2 className="h-4 w-4" />
+                        <CheckCircle2 className="h-3.5 w-3.5" />
                         <span>Correct (+4)</span>
                       </>
                     ) : (
                       <>
-                        <XCircle className="h-4 w-4" />
+                        <XCircle className="h-3.5 w-3.5" />
                         <span>Incorrect (-1)</span>
                       </>
                     )}
                   </span>
                 </div>
 
-                <p className="text-sm sm:text-base font-semibold text-[var(--text-primary)] leading-relaxed">
+                <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)] leading-relaxed">
                   {q.question}
                 </p>
 
@@ -579,7 +579,7 @@ export const TestView: React.FC<TestViewProps> = ({
                     return (
                       <div
                         key={oIdx}
-                        className={`rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm ${
+                        className={`rounded-xl border px-3 py-2 text-xs ${
                           isAnswerKey
                             ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300 font-semibold'
                             : isUserPick
@@ -587,7 +587,7 @@ export const TestView: React.FC<TestViewProps> = ({
                             : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
                         }`}
                       >
-                        <span className="font-mono font-bold mr-2">
+                        <span className="font-mono font-bold mr-1.5">
                           {String.fromCharCode(65 + oIdx)}.
                         </span>
                         {opt}
@@ -596,7 +596,7 @@ export const TestView: React.FC<TestViewProps> = ({
                   })}
                 </div>
 
-                <div className="rounded-xl bg-[var(--bg-secondary)] p-3.5 text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+                <div className="rounded-xl bg-[var(--bg-secondary)] p-3 text-xs text-[var(--text-secondary)] leading-relaxed">
                   <strong className="text-[var(--text-primary)]">Solution: </strong>
                   {q.explanation}
                 </div>
@@ -609,7 +609,7 @@ export const TestView: React.FC<TestViewProps> = ({
                         `Explain this ${activePack.subject} question step-by-step:\n${q.question}\nOptions: ${q.options.join(' | ')}`
                       )
                     }
-                    className="flex items-center gap-1.5 text-xs font-bold text-[var(--primary-color)] hover:underline"
+                    className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>Ask Study AI for Deeper Explanation</span>
@@ -629,27 +629,27 @@ export const TestView: React.FC<TestViewProps> = ({
     const selectedOpt = answers[currentIdx];
 
     return (
-      <div className="space-y-6">
-        {/* Larger Test Top Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] px-6 py-4">
+      <div className="space-y-4">
+        {/* Compact Test Top Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-3">
           <div className="min-w-0">
-            <div className="text-xs sm:text-sm text-[var(--text-secondary)]">
+            <div className="text-xs text-[var(--text-secondary)]">
               {activePack.exam} · {activePack.subject} · +4 / -1 Marking
             </div>
-            <h2 className="font-['Sora'] text-lg sm:text-2xl font-extrabold text-[var(--text-primary)] truncate">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] truncate">
               {activePack.title}
             </h2>
           </div>
 
-          <div className="flex items-center gap-3.5 shrink-0">
-            <div className="flex items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 font-mono tabular-nums text-base sm:text-lg font-extrabold text-amber-400">
-              <Clock className="h-5 w-5" />
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1.5 font-mono tabular-nums text-sm sm:text-base font-extrabold text-amber-400">
+              <Clock className="h-4 w-4" />
               <span>{formatClock(secondsLeft)}</span>
             </div>
             <button
               type="button"
               onClick={handleSubmitTest}
-              className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm sm:text-base font-bold text-white hover:bg-emerald-500 transition"
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-emerald-500 transition"
             >
               Submit Test
             </button>
@@ -657,10 +657,10 @@ export const TestView: React.FC<TestViewProps> = ({
         </div>
 
         {/* 2-Column CBT Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Larger Question Stage */}
-          <div className="lg:col-span-8 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-[var(--card-border)] pb-3.5 text-sm sm:text-base">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Question Stage */}
+          <div className="lg:col-span-8 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--card-border)] pb-2.5 text-xs sm:text-sm">
               <span className="font-mono font-bold text-[var(--primary-color)]">
                 Question {currentIdx + 1} of {activePack.questions.length}
               </span>
@@ -669,11 +669,11 @@ export const TestView: React.FC<TestViewProps> = ({
               )}
             </div>
 
-            <p className="text-lg sm:text-xl font-semibold text-[var(--text-primary)] leading-relaxed">
+            <p className="text-sm sm:text-base font-semibold text-[var(--text-primary)] leading-relaxed">
               {q.question}
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {q.options.map((opt, idx) => {
                 const active = selectedOpt === idx;
                 return (
@@ -681,14 +681,14 @@ export const TestView: React.FC<TestViewProps> = ({
                     key={idx}
                     type="button"
                     onClick={() => setAnswers((prev) => ({ ...prev, [currentIdx]: idx }))}
-                    className={`flex w-full items-center gap-3.5 rounded-2xl border p-4 sm:p-5 text-left text-base sm:text-lg transition ${
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 sm:p-3.5 text-left text-xs sm:text-sm transition ${
                       active
                         ? 'border-[var(--primary-color)] bg-[var(--primary-color)]/15 text-[var(--text-primary)] font-semibold'
                         : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:border-[var(--primary-color)]/50'
                     }`}
                   >
                     <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-mono text-sm font-bold ${
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold ${
                         active
                           ? 'bg-[var(--primary-color)] text-white'
                           : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
@@ -702,8 +702,8 @@ export const TestView: React.FC<TestViewProps> = ({
               })}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--card-border)] pt-5">
-              <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-[var(--card-border)] pt-3.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() =>
@@ -713,7 +713,7 @@ export const TestView: React.FC<TestViewProps> = ({
                       return next;
                     })
                   }
-                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >
                   Clear Response
                 </button>
@@ -722,23 +722,23 @@ export const TestView: React.FC<TestViewProps> = ({
                   onClick={() =>
                     setMarked((prev) => ({ ...prev, [currentIdx]: !prev[currentIdx] }))
                   }
-                  className={`flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs sm:text-sm font-bold transition ${
+                  className={`flex items-center gap-1 rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
                     marked[currentIdx]
                       ? 'border-amber-500 bg-amber-500/15 text-amber-400'
                       : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
                   }`}
                 >
-                  <Flag className="h-4 w-4" />
+                  <Flag className="h-3.5 w-3.5" />
                   <span>{marked[currentIdx] ? 'Marked' : 'Mark Review'}</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={currentIdx === 0}
                   onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
-                  className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   <span>Prev</span>
@@ -749,7 +749,7 @@ export const TestView: React.FC<TestViewProps> = ({
                   onClick={() =>
                     setCurrentIdx((i) => Math.min(activePack.questions.length - 1, i + 1))
                   }
-                  className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-xl bg-[var(--primary-color)] px-3.5 py-1.5 text-xs sm:text-sm font-bold text-white disabled:opacity-40"
                 >
                   <span>Next</span>
                   <ChevronRight className="h-4 w-4" />
@@ -758,12 +758,12 @@ export const TestView: React.FC<TestViewProps> = ({
             </div>
           </div>
 
-          {/* Larger Question Palette */}
-          <div className="lg:col-span-4 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 space-y-5">
-            <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
+          {/* Compact Question Palette */}
+          <div className="lg:col-span-4 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-3.5">
+            <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
               Question Palette
             </h3>
-            <div className="grid grid-cols-5 gap-2.5">
+            <div className="grid grid-cols-5 gap-2">
               {activePack.questions.map((_, idx) => {
                 const isAns = answers[idx] !== undefined;
                 const isMarked = Boolean(marked[idx]);
@@ -773,7 +773,7 @@ export const TestView: React.FC<TestViewProps> = ({
                     key={idx}
                     type="button"
                     onClick={() => setCurrentIdx(idx)}
-                    className={`h-12 rounded-xl font-mono tabular-nums text-sm font-bold transition border ${
+                    className={`h-9 rounded-lg font-mono tabular-nums text-xs font-bold transition border ${
                       isCurrent
                         ? 'ring-2 ring-[var(--primary-color)] border-[var(--primary-color)]'
                         : 'border-[var(--card-border)]'
@@ -790,7 +790,7 @@ export const TestView: React.FC<TestViewProps> = ({
                 );
               })}
             </div>
-            <div className="flex flex-wrap gap-3 text-xs sm:text-sm text-[var(--text-secondary)] border-t border-[var(--card-border)] pt-3.5">
+            <div className="flex flex-wrap gap-2.5 text-xs text-[var(--text-secondary)] border-t border-[var(--card-border)] pt-3">
               <span>Answered: {Object.keys(answers).length}</span>
               <span aria-hidden="true">·</span>
               <span>Marked: {Object.values(marked).filter(Boolean).length}</span>
@@ -805,19 +805,19 @@ export const TestView: React.FC<TestViewProps> = ({
 
   // RENDER: Test Series Catalog + PW Test Proxy + Custom AI Test Builder
   return (
-    <div className="space-y-8">
-      {/* Larger Header Banner */}
-      <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-9">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm sm:text-base font-bold text-[var(--primary-color)]">
-              <ClipboardCheck className="h-5 w-5" />
+    <div className="space-y-5">
+      {/* Compact Header Banner */}
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--primary-color)]">
+              <ClipboardCheck className="h-4 w-4" />
               <span>Study Cloud · PW Test Proxy & CBT Simulator</span>
             </div>
-            <h1 className="font-['Sora'] text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)]">
+            <h1 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
               PW Batch Quizzes, Tests & Mock Exams
             </h1>
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-3xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
               Browse live PW batch DPP quizzes via proxy, attempt timed JEE/NEET/Board CBT tests
               with +4/-1 NTA scoring, or generate a custom chapter mock test.
             </p>
@@ -826,20 +826,20 @@ export const TestView: React.FC<TestViewProps> = ({
       </div>
 
       {/* PW Live Batch Quizzes & Test Proxy Browser */}
-      <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-8 space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-              <BookOpen className="h-6 w-6 text-amber-400" />
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-amber-400" />
               <span>PW Batch DPP Quizzes & Live Tests (Proxy)</span>
             </h2>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+            <p className="text-xs text-[var(--text-secondary)]">
               Select any batch, subject, and chapter to fetch live PW quiz sets and launch in CBT mode.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <select
             value={selectedPwBatchId}
             onChange={(e) => {
@@ -847,7 +847,7 @@ export const TestView: React.FC<TestViewProps> = ({
               setSelectedPwSubjectSlug('');
               setSelectedPwTopicId('');
             }}
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             {pwBatchOptions.map((b) => (
               <option key={b.batch_id} value={b.batch_id}>
@@ -862,7 +862,7 @@ export const TestView: React.FC<TestViewProps> = ({
               setSelectedPwSubjectSlug(e.target.value);
               setSelectedPwTopicId('');
             }}
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             {pwSubjects.length === 0 ? (
               <option value="">Loading subjects...</option>
@@ -878,7 +878,7 @@ export const TestView: React.FC<TestViewProps> = ({
           <select
             value={selectedPwTopicId}
             onChange={(e) => setSelectedPwTopicId(e.target.value)}
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             <option value="">All Chapters with Quizzes</option>
             {pwTopics
@@ -892,62 +892,62 @@ export const TestView: React.FC<TestViewProps> = ({
         </div>
 
         {pwQuizError && (
-          <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            <AlertCircle className="h-5 w-5 shrink-0" />
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{pwQuizError}</span>
           </div>
         )}
 
         {loadingPwQuizzes ? (
-          <div className="flex items-center justify-center py-10 gap-3 text-sm sm:text-base text-[var(--text-secondary)]">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--primary-color)]" />
+          <div className="flex items-center justify-center py-8 gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
+            <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
             <span>Loading live PW batch quizzes via proxy...</span>
           </div>
         ) : pwQuizzes.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-8 text-center text-sm text-[var(--text-secondary)]">
+          <div className="rounded-xl border border-dashed border-[var(--card-border)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
             No DPP quiz sets found in this subject yet. Try selecting another subject or batch above.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pwQuizzes.slice(0, 8).map((quiz) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pwQuizzes.slice(0, 9).map((quiz) => {
               const isLaunching = launchingQuizId === quiz.id;
               return (
                 <div
                   key={quiz.id}
-                  className="flex flex-col justify-between gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 hover:border-[var(--primary-color)]/60 transition"
+                  className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 hover:border-[var(--primary-color)]/60 transition"
                 >
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)]">
                       <span className="font-bold text-[var(--primary-color)]">{quiz.subjectName}</span>
                       <span aria-hidden="true">·</span>
                       <span className="font-mono tabular-nums">{quiz.totalQuestions} Qs</span>
                       <span aria-hidden="true">·</span>
                       <span className="font-mono tabular-nums">{quiz.totalMarks} Marks</span>
                     </div>
-                    <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] leading-snug">
+                    <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] leading-snug">
                       {quiz.title}
                     </h3>
                     {quiz.topicName && (
-                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">
+                      <p className="text-xs text-[var(--text-secondary)] truncate">
                         Chapter: {quiz.topicName}
                       </p>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-3">
-                    <span className="text-xs text-[var(--text-secondary)] truncate pr-2">
+                  <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-2.5">
+                    <span className="text-[11px] text-[var(--text-secondary)] truncate pr-2">
                       {quiz.batchName}
                     </span>
                     <button
                       type="button"
                       disabled={Boolean(launchingQuizId)}
                       onClick={() => handleLaunchPwQuiz(quiz)}
-                      className="flex shrink-0 items-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white hover:opacity-90 disabled:opacity-60 transition whitespace-nowrap"
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition whitespace-nowrap"
                     >
                       {isLaunching ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Play className="h-4 w-4 fill-white" />
+                        <Play className="h-3.5 w-3.5 fill-white" />
                       )}
                       <span>{isLaunching ? 'Loading CBT...' : 'Attempt PW Quiz'}</span>
                     </button>
@@ -962,20 +962,20 @@ export const TestView: React.FC<TestViewProps> = ({
       {/* Custom AI Mock Test Generator */}
       <form
         onSubmit={handleGenerateAiTest}
-        className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-8 space-y-5"
+        className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4"
       >
-        <div className="flex items-center gap-2.5">
-          <Sparkles className="h-6 w-6 text-[var(--primary-color)]" />
-          <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-[var(--primary-color)]" />
+          <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
             Generate Custom Chapter Mock Test
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           <select
             value={aiExam}
             onChange={(e) => setAiExam(e.target.value)}
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm sm:text-base font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             <option value="IIT-JEE">Exam: IIT-JEE</option>
             <option value="NEET">Exam: NEET</option>
@@ -986,7 +986,7 @@ export const TestView: React.FC<TestViewProps> = ({
           <select
             value={aiSubject}
             onChange={(e) => setAiSubject(e.target.value)}
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm sm:text-base font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             <option value="Physics">Physics</option>
             <option value="Chemistry">Chemistry</option>
@@ -999,14 +999,14 @@ export const TestView: React.FC<TestViewProps> = ({
             value={aiTopic}
             onChange={(e) => setAiTopic(e.target.value)}
             placeholder="Chapter / Topic (e.g. Ray Optics)"
-            className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm sm:text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
           />
 
-          <div className="flex gap-2.5">
+          <div className="flex gap-2">
             <select
               value={aiCount}
               onChange={(e) => setAiCount(Number(e.target.value))}
-              className="w-28 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-3 font-mono text-sm sm:text-base font-semibold text-[var(--text-primary)] focus:outline-none"
+              className="w-24 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-2.5 py-2 font-mono text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:outline-none"
             >
               <option value={5}>5 Qs</option>
               <option value={8}>8 Qs</option>
@@ -1016,12 +1016,12 @@ export const TestView: React.FC<TestViewProps> = ({
             <button
               type="submit"
               disabled={generating || !aiTopic.trim()}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--primary-color)] px-5 py-3 text-sm sm:text-base font-bold text-white hover:opacity-90 disabled:opacity-50 transition whitespace-nowrap"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:opacity-90 disabled:opacity-50 transition whitespace-nowrap"
             >
               {generating ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Play className="h-5 w-5" />
+                <Play className="h-4 w-4" />
               )}
               <span>{generating ? 'Building...' : 'Start AI Test'}</span>
             </button>
@@ -1029,47 +1029,47 @@ export const TestView: React.FC<TestViewProps> = ({
         </div>
 
         {generateError && (
-          <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            <AlertCircle className="h-5 w-5 shrink-0" />
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{generateError}</span>
           </div>
         )}
       </form>
 
       {/* Instant Ready Practice Series */}
-      <div className="space-y-4">
-        <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
+      <div className="space-y-3">
+        <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
           Ready-to-Attempt Practice Sets
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {BUILTIN_PACKS.map((pack) => (
             <div
               key={pack.id}
-              className="flex flex-col justify-between gap-5 rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 transition hover:border-[var(--primary-color)]/60"
+              className="flex flex-col justify-between gap-3.5 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 transition hover:border-[var(--primary-color)]/60"
             >
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
                   <span className="font-bold text-[var(--primary-color)]">{pack.exam}</span>
                   <span aria-hidden="true">·</span>
                   <span>{pack.subject}</span>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono tabular-nums">{pack.questions.length} Qs</span>
                   <span aria-hidden="true">·</span>
-                  <span className="font-mono tabular-nums">{pack.durationMinutes} min</span>
+                  <span className="font-mono tabular-nums">{pack.durationMinutes}m</span>
                 </div>
-                <h3 className="font-['Sora'] text-lg sm:text-xl font-extrabold text-[var(--text-primary)]">
+                <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] leading-snug">
                   {pack.title}
                 </h3>
               </div>
 
-              <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-4">
-                <span className="text-xs sm:text-sm text-[var(--text-secondary)]">NTA Scheme (+4 / -1)</span>
+              <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-3">
+                <span className="text-[11px] text-[var(--text-secondary)]">+4 / -1 NTA</span>
                 <button
                   type="button"
                   onClick={() => startPack(pack)}
-                  className="flex items-center gap-2 rounded-2xl bg-[var(--primary-color)] px-5 py-2.5 text-sm sm:text-base font-bold text-white hover:opacity-90 transition"
+                  className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 transition"
                 >
-                  <Play className="h-4 w-4 fill-white" />
+                  <Play className="h-3.5 w-3.5 fill-white" />
                   <span>Start Test</span>
                 </button>
               </div>
@@ -1080,24 +1080,24 @@ export const TestView: React.FC<TestViewProps> = ({
 
       {/* Recent Test Attempts */}
       {pastAttempts.length > 0 && (
-        <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-4">
-          <h3 className="font-['Sora'] text-lg sm:text-xl font-extrabold text-[var(--text-primary)] flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-amber-400" />
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-3">
+          <h3 className="font-['Sora'] text-base font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-amber-400" />
             <span>Recent Test Scorecards</span>
           </h3>
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {pastAttempts.map((att, idx) => (
               <div
                 key={`${att.date}-${idx}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-3.5 text-sm sm:text-base"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-xs sm:text-sm"
               >
                 <div>
                   <div className="font-bold text-[var(--text-primary)]">{att.title}</div>
-                  <div className="text-xs sm:text-sm text-[var(--text-secondary)]">
+                  <div className="text-[11px] text-[var(--text-secondary)]">
                     {new Date(att.date).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="flex items-center gap-4 font-mono tabular-nums font-bold">
+                <div className="flex items-center gap-3 font-mono tabular-nums font-bold">
                   <span className="text-emerald-400">{att.accuracy}% acc</span>
                   <span className="text-[var(--primary-color)]">
                     {att.score}/{att.maxScore}

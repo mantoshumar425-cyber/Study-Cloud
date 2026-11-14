@@ -20,7 +20,6 @@ import {
   Layers,
   Video,
   Download,
-  Bell,
   Compass,
   Flame,
   Trophy,
@@ -30,6 +29,8 @@ import {
   Eye,
   Sparkles,
   Gem,
+  ClipboardCheck,
+  Users,
 } from 'lucide-react';
 import {
   AdventureState,
@@ -54,6 +55,9 @@ import {
 import { getAdventureMetrics, isLectureCompleted } from '../services/adventureService';
 import { StudyAiPanel } from './StudyAiPanel';
 import { KhazanaExplorer } from './KhazanaExplorer';
+import { BatchTestsPanel } from './BatchTestsPanel';
+import { BatchCommunityPanel } from './BatchCommunityPanel';
+import { SubjectIconBadge } from './SubjectIconBadge';
 
 export interface PlayLecturePayload {
   batchId: string;
@@ -137,14 +141,39 @@ function formatTimeRangeIst(startIso?: string, endIso?: string): string {
     if (!Number.isFinite(ts)) return '';
     return new Date(ts).toLocaleTimeString('en-IN', {
       timeZone: 'Asia/Kolkata',
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     });
   };
   const s = fmt(startIso);
   const e = endIso ? fmt(endIso) : '';
-  return e ? `${s} - ${e}` : s;
+  return e ? `${s} – ${e}` : s;
+}
+
+function formatRelativeClassTime(startIso?: string, endIso?: string): string {
+  const startTs = startIso ? Date.parse(startIso) : NaN;
+  const endTs = endIso ? Date.parse(endIso) : NaN;
+  if (!Number.isFinite(startTs)) return 'Today';
+  const now = Date.now();
+  const diffMins = Math.round((now - startTs) / 60000);
+  if (diffMins < -60) {
+    const h = Math.round(Math.abs(diffMins) / 60);
+    return `in ${h}h`;
+  }
+  if (diffMins < 0) {
+    return `in ${Math.abs(diffMins)}m`;
+  }
+  if (Number.isFinite(endTs) && now > endTs) {
+    const agoEnd = Math.round((now - endTs) / 60000);
+    if (agoEnd < 60) return `${Math.max(1, agoEnd)}m ago`;
+    const h = Math.floor(agoEnd / 60);
+    return `${h}h ago`;
+  }
+  if (diffMins < 60) {
+    return `${Math.max(1, diffMins)}m ago`;
+  }
+  return `${Math.floor(diffMins / 60)}h ago`;
 }
 
 export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
@@ -159,7 +188,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   onPlayLecture,
   onSelectSubBatch,
 }) => {
-  const [activeTopTab, setActiveTopTab] = useState<'subjects' | 'khazana' | 'schedule' | 'announcements'>('subjects');
+  const [activeTopTab, setActiveTopTab] = useState<'subjects' | 'tests' | 'khazana' | 'community' | 'schedule'>('subjects');
 
   // Step 1: Batch details & Subjects
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -180,6 +209,8 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   const [weeklyError, setWeeklyError] = useState<string | null>(null);
   const [scheduleSubjectFilter, setScheduleSubjectFilter] = useState<string>('all');
   const [scheduleNoticeMsg, setScheduleNoticeMsg] = useState<string | null>(null);
+  const [todayScrollPct, setTodayScrollPct] = useState(32);
+  const [failedTeacherImgs, setFailedTeacherImgs] = useState<Record<string, boolean>>({});
 
   // Step 2: Selected Subject -> Topics
   const [selectedSubject, setSelectedSubject] = useState<BatchSubject | null>(null);
@@ -205,6 +236,12 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
   const [copied, setCopied] = useState(false);
   const [showAiDrawer, setShowAiDrawer] = useState(false);
+  const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
+
+  const handleOpenAiWithPrompt = (prompt: string) => {
+    setAiInitialPrompt(prompt);
+    setShowAiDrawer(true);
+  };
 
   // Lock background page scroll while full-screen batch view is open
   useEffect(() => {
@@ -245,7 +282,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setScheduleNoticeMsg(null);
     setPdfDownloadError(null);
     setShowAiDrawer(false);
+    setAiInitialPrompt(null);
     setKhazanaProgramId(null);
+    setFailedTeacherImgs({});
+    setTodayScrollPct(32);
 
     setLoadingDetails(true);
     setDetailsError(null);
@@ -761,65 +801,9 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {!selectedSubject && (
-            <>
-              {khazanaProgramId && (
-                <button
-                  onClick={() =>
-                    setActiveTopTab(activeTopTab === 'khazana' ? 'subjects' : 'khazana')
-                  }
-                  className={`flex h-10 items-center gap-1.5 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-bold transition ${
-                    activeTopTab === 'khazana'
-                      ? 'bg-amber-500 text-slate-950 shadow-sm'
-                      : 'border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
-                  }`}
-                  title="Open Khazana Recorded Vault for this Batch"
-                >
-                  <Gem className="h-4 w-4" />
-                  <span className="hidden xs:inline">Khazana</span>
-                </button>
-              )}
-              <button
-                onClick={() =>
-                  setActiveTopTab(activeTopTab === 'schedule' ? 'subjects' : 'schedule')
-                }
-                className={`flex h-10 items-center gap-1.5 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-bold transition ${
-                  activeTopTab === 'schedule'
-                    ? 'bg-[var(--primary-color)] text-white'
-                    : 'border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                <CalendarDays className="h-4 w-4" />
-                <span className="hidden sm:inline">Weekly Schedule</span>
-                {todayClasses.length > 0 && (
-                  <span
-                    className={`rounded px-1.5 py-0.2 font-mono text-[11px] ${
-                      activeTopTab === 'schedule' ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400'
-                    }`}
-                  >
-                    {todayClasses.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() =>
-                  setActiveTopTab(activeTopTab === 'announcements' ? 'subjects' : 'announcements')
-                }
-                className={`flex h-10 items-center gap-1.5 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-bold transition ${
-                  activeTopTab === 'announcements'
-                    ? 'bg-[var(--primary-color)] text-white'
-                    : 'border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                <Bell className="h-4 w-4" />
-                <span className="hidden md:inline">Notices ({announcements.length})</span>
-              </button>
-            </>
-          )}
-
           <button
             onClick={() => setShowAiDrawer(true)}
-            className="flex h-10 items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3 sm:px-4 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
             title="Ask Study AI about this batch, subject, or chapter"
           >
             <Sparkles className="h-4 w-4" />
@@ -828,10 +812,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
           <button
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:border-red-500/50 hover:text-red-400 transition"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:border-red-500/50 hover:text-red-400 transition"
             title="Close Batch"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -946,26 +930,27 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
           {loadingDetails ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-sm text-[var(--text-secondary)]">
-              <Loader2 className="h-10 w-10 animate-spin text-[var(--primary-color)]" />
-              <span>Loading batch subjects & syllabus...</span>
+              <Loader2 className="h-9 w-9 animate-spin text-[var(--primary-color)]" />
+              <span>Loading batch subjects, tests &amp; Khazana...</span>
             </div>
           ) : detailsError && subjects.length === 0 && mahapackBatches.length === 0 && !khazanaProgramId ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-center">
               <AlertCircle className="h-8 w-8 text-red-400 mb-2" />
               <p className="text-xs text-red-300 max-w-md">{detailsError}</p>
             </div>
-          ) : activeTopTab === 'khazana' && !selectedSubject && khazanaProgramId ? (
-            <KhazanaExplorer
-              programId={khazanaProgramId}
-              batchId={batch.batch_id}
-              batchName={batch.name}
-              adventureState={adventureState}
-              onToggleLectureComplete={onToggleLectureComplete}
-              onPlayLecture={onPlayLecture}
-            />
           ) : activeTopTab === 'schedule' && !selectedSubject ? (
             /* Weekly Schedule View (Today + Weekly Strip + Routine) */
-            <div className="space-y-5">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setActiveTopTab('subjects')}
+                  className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span>Back to Batch Tabs</span>
+                </button>
+              </div>
               {/* Week Navigation Header */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5">
                 <div>
@@ -1301,30 +1286,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                 })()
               )}
             </div>
-          ) : activeTopTab === 'announcements' && !selectedSubject ? (
-            /* Announcements View */
-            <div className="space-y-3.5">
-              {announcements.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-12 text-center text-sm text-[var(--text-secondary)]">
-                  No announcements posted for this batch yet.
-                </div>
-              ) : (
-                announcements.map((ann, idx) => (
-                  <div
-                    key={ann._id || idx}
-                    className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 space-y-2"
-                  >
-                    <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-secondary)]">
-                      <span className="font-bold text-indigo-400">Batch Notice</span>
-                      {ann.createdAt && <span>{new Date(ann.createdAt).toLocaleDateString()}</span>}
-                    </div>
-                    <p className="text-sm sm:text-base text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
-                      {ann.announcement || ann.title || 'Notice update'}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
           ) : selectedTopic ? (
             /* Topic Contents (Videos / Notes / DPP) */
             <div className="space-y-4">
@@ -1447,208 +1408,325 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
               )}
             </div>
           ) : (
-            /* STEP 1: Today's Schedule Preview + Subjects Grid (or Mahapack Batches) */
-            <div className="space-y-6">
-              {/* Today's Classes Quick Strip */}
-              <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-2 mb-3.5">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="h-5 w-5 text-[var(--primary-color)]" />
+            /* BATCH HUB: Today Classes Teacher Carousel + Underline Tabs (SUBJECTS | TESTS | KHAZANA | COMMUNITY) */
+            <div className="space-y-4">
+              {/* Today Classes Carousel Card (Matches Reference Screenshot) */}
+              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-5 w-1 rounded-full bg-[var(--primary-color)]" />
                     <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-                      Today&apos;s Classes ({todayClasses.length})
+                      Today Classes
                     </h3>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setActiveTopTab('schedule')}
-                    className="flex items-center gap-1 text-xs sm:text-sm font-bold text-[var(--primary-color)] hover:underline"
+                    className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                   >
-                    <span>Full Weekly Schedule</span>
-                    <ChevronRight className="h-4 w-4" />
+                    <CalendarDays className="h-3.5 w-3.5 text-[var(--primary-color)]" />
+                    <span>Weekly Schedule</span>
                   </button>
                 </div>
 
                 {loadingToday ? (
-                  <div className="flex items-center gap-2 py-3 text-xs sm:text-sm text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-2 py-4 text-xs sm:text-sm text-[var(--text-secondary)]">
                     <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
-                    <span>Checking today&apos;s live timetable...</span>
+                    <span>Loading today&apos;s scheduled classes &amp; teachers...</span>
                   </div>
                 ) : todayClasses.length === 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-dashed border-[var(--card-border)] px-4 py-3 text-xs sm:text-sm text-[var(--text-secondary)]">
-                    <span>No live class listed for today yet — browse the weekly calendar.</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-3 text-xs text-[var(--text-secondary)]">
+                    <span>No live class scheduled today — check Weekly Schedule for upcoming timings.</span>
                     <button
+                      type="button"
                       onClick={() => setActiveTopTab('schedule')}
                       className="font-bold text-[var(--primary-color)] hover:underline"
                     >
-                      Open Weekly Calendar
+                      View Weekly Schedule
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {todayClasses.slice(0, 6).map((cls) => {
-                      const status = cls.liveStatus || 'COMPLETED';
-                      const statusColor =
-                        status === 'LIVE'
-                          ? 'text-red-400'
-                          : status === 'UPCOMING'
-                          ? 'text-sky-400'
-                          : 'text-emerald-400';
-                      return (
-                        <button
-                          key={cls._id}
-                          onClick={() => handlePlayScheduledClass(cls)}
-                          className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 text-left hover:border-[var(--primary-color)] transition"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 text-xs font-bold">
-                              <span className={statusColor}>
-                                {status === 'LIVE' ? '● LIVE' : status === 'UPCOMING' ? 'UPCOMING' : 'DONE'}
-                              </span>
-                              <span className="text-[var(--primary-color)] truncate">
-                                {cls.subjectName || 'Class'}
-                              </span>
-                              <span className="font-mono text-[var(--text-secondary)]">
-                                {formatTimeRangeIst(cls.startTime, cls.endTime)}
-                              </span>
-                            </div>
-                            <div className="font-['Sora'] text-sm sm:text-base font-bold text-[var(--text-primary)] truncate mt-1">
-                              {cls.topic}
-                            </div>
-                            {cls.teacherNames && cls.teacherNames.length > 0 && (
-                              <div className="text-xs text-[var(--text-secondary)] truncate mt-0.5">
-                                {cls.teacherNames.join(', ')}
+                  <div className="space-y-2.5">
+                    <div
+                      onScroll={(e) => {
+                        const el = e.currentTarget;
+                        const maxScroll = el.scrollWidth - el.clientWidth;
+                        if (maxScroll <= 0) {
+                          setTodayScrollPct(100);
+                        } else {
+                          const ratio = Math.min(1, Math.max(0, el.scrollLeft / maxScroll));
+                          setTodayScrollPct(Math.round(30 + ratio * 70));
+                        }
+                      }}
+                      className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scroll-smooth no-scrollbar"
+                    >
+                      {todayClasses.map((cls) => {
+                        const teacherLabel =
+                          cls.teacherNames && cls.teacherNames.length > 0
+                            ? cls.teacherNames[0]
+                            : cls.subjectName || 'Faculty';
+                        const imgSrc = !failedTeacherImgs[cls._id] ? cls.teacherImage : '';
+                        const initials = teacherLabel
+                          .split(/\s+/)
+                          .slice(0, 2)
+                          .map((w) => w[0])
+                          .join('')
+                          .toUpperCase();
+
+                        const status = cls.liveStatus || 'COMPLETED';
+                        const isCancelled = Boolean(cls.isCancelled);
+                        const relTime = formatRelativeClassTime(cls.startTime, cls.endTime);
+
+                        return (
+                          <button
+                            key={cls._id}
+                            type="button"
+                            onClick={() => handlePlayScheduledClass(cls)}
+                            className="group w-[245px] sm:w-[260px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] text-left transition hover:border-[var(--primary-color)] hover:shadow-md"
+                          >
+                            {/* Teacher Portrait + Patterned Stage + Black Name Banner */}
+                            <div className="relative h-32 w-full overflow-hidden bg-[var(--bg-tertiary)]">
+                              {/* Soft decorative geometric circles behind portrait */}
+                              <div className="pointer-events-none absolute -top-4 left-3 h-10 w-10 rounded-full bg-[var(--text-primary)]/[0.06]" />
+                              <div className="pointer-events-none absolute top-4 right-2 h-14 w-14 rounded-full bg-[var(--text-primary)]/[0.06]" />
+                              <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 h-24 w-24 rounded-full bg-[var(--text-primary)]/[0.08]" />
+
+                              {imgSrc ? (
+                                <img
+                                  src={imgSrc}
+                                  alt={teacherLabel}
+                                  onError={() =>
+                                    setFailedTeacherImgs((prev) => ({ ...prev, [cls._id]: true }))
+                                  }
+                                  className="relative z-10 mx-auto h-full w-auto max-w-full object-contain object-bottom pt-1.5 transition-transform duration-200 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="relative z-10 flex h-full w-full items-center justify-center pb-5">
+                                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--primary-color)]/30 bg-[var(--primary-color)]/15 font-['Sora'] text-xl font-extrabold text-[var(--primary-color)]">
+                                    {initials || 'SC'}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="absolute inset-x-0 bottom-0 z-20 bg-black/90 px-2.5 py-1.5 text-center text-xs font-bold text-white truncate">
+                                {teacherLabel}
                               </div>
-                            )}
-                          </div>
-                          <Play className="h-5 w-5 shrink-0 text-[var(--primary-color)]" />
-                        </button>
-                      );
-                    })}
+                            </div>
+
+                            {/* Class Details */}
+                            <div className="p-3 space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className={`text-[11px] font-bold ${
+                                    isCancelled || status === 'LIVE'
+                                      ? 'text-rose-400'
+                                      : status === 'UPCOMING'
+                                      ? 'text-sky-400'
+                                      : 'text-[var(--text-secondary)]'
+                                  }`}
+                                >
+                                  {relTime}
+                                </span>
+
+                                {isCancelled ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-400">
+                                    Cancelled
+                                  </span>
+                                ) : status === 'LIVE' ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-red-500/35 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                    Live
+                                  </span>
+                                ) : status === 'UPCOMING' ? (
+                                  <span className="inline-flex items-center rounded-full border border-sky-500/35 bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-400">
+                                    Upcoming
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                                    Ended
+                                  </span>
+                                )}
+                              </div>
+
+                              <h4 className="font-['Sora'] text-xs sm:text-sm font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
+                                {cls.subjectName || 'Class'}
+                              </h4>
+                              <p className="text-xs text-[var(--text-secondary)] truncate">
+                                {cls.topic}
+                              </p>
+
+                              <div className="mt-2 flex items-center gap-1.5 border-t border-[var(--card-border)] pt-2 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]">
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">
+                                  {formatTimeRangeIst(cls.startTime, cls.endTime)}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Horizontal Scroll Indicator Track */}
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--primary-color)] transition-all duration-150"
+                        style={{
+                          width: `${todayClasses.length <= 1 ? 100 : todayScrollPct}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              {khazanaProgramId && (
-                <button
-                  onClick={() => setActiveTopTab('khazana')}
-                  className="group flex w-full items-center justify-between gap-4 rounded-3xl border border-amber-500/35 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-[var(--bg-secondary)] p-4 sm:p-5 text-left transition hover:border-amber-400 hover:shadow-lg"
+              {/* Per-Batch Underline Tabs (SUBJECTS | TESTS | KHAZANA | COMMUNITY) */}
+              <div className="border-b border-[var(--card-border)]">
+                <nav
+                  aria-label="Batch sections"
+                  className="flex items-center gap-2 sm:gap-6 overflow-x-auto no-scrollbar"
                 >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-slate-950 shadow-md">
-                      <Gem className="h-6 w-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-400">
-                          Included Khazana Vault
-                        </span>
-                      </div>
-                      <h3 className="mt-1 font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] group-hover:text-amber-400 transition">
-                        Open {batch.name} Khazana Archive
-                      </h3>
-                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">
-                        Browse star faculty playlists, full recorded chapters, notes & DPP solutions
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-extrabold text-slate-950">
-                    <span className="hidden xs:inline">Explore</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </div>
-                </button>
-              )}
-
-              {subjects.length > 0 && (
-                <div>
-                  <h3 className="mb-3.5 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
-                    Select Subject ({subjects.length})
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {subjects.map((subj) => {
-                      const imgUrl =
-                        subj.imageId?.baseUrl && subj.imageId?.key
-                          ? `${subj.imageId.baseUrl}${subj.imageId.key}`
-                          : null;
-                      return (
-                        <button
-                          key={subj._id}
-                          onClick={() => handleSelectSubject(subj)}
-                          className="group flex items-center gap-4 rounded-3xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-lg"
-                        >
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-indigo-500/10 text-indigo-400">
-                            {imgUrl ? (
-                              <img
-                                src={imgUrl}
-                                alt={subj.subject}
-                                className="h-full w-full object-contain p-1.5"
-                              />
-                            ) : (
-                              <BookOpen className="h-8 w-8" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
-                              {subj.subject}
-                            </h4>
-                            <p className="mt-1 text-xs sm:text-sm text-[var(--text-secondary)]">
-                              {subj.tagCount
-                                ? `${subj.tagCount} Chapters`
-                                : subj.lectureCount
-                                ? `${subj.lectureCount} Lectures`
-                                : 'Tap to browse chapters'}
-                            </p>
-                          </div>
-                          <ChevronRight className="h-5 w-5 text-[var(--text-secondary)] group-hover:text-[var(--primary-color)] transition" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {mahapackBatches.length > 0 && (
-                <div>
-                  <h3 className="mb-3.5 flex items-center gap-2 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
-                    <Layers className="h-4 w-4 text-purple-400" />
-                    <span>Included Mahapack Batches ({mahapackBatches.length})</span>
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {mahapackBatches.map((mb: any) => (
+                  {[
+                    { id: 'subjects' as const, label: 'SUBJECTS', icon: BookOpen },
+                    { id: 'tests' as const, label: 'TESTS', icon: ClipboardCheck },
+                    { id: 'khazana' as const, label: 'KHAZANA', icon: Gem },
+                    {
+                      id: 'community' as const,
+                      label:
+                        announcements.length > 0
+                          ? `COMMUNITY (${announcements.length})`
+                          : 'COMMUNITY',
+                      icon: Users,
+                    },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeTopTab === tab.id;
+                    return (
                       <button
-                        key={mb._id || mb.batchId}
-                        onClick={() => {
-                          if (onSelectSubBatch) {
-                            onSelectSubBatch({
-                              batch_id: mb._id || mb.batchId,
-                              name: mb.name,
-                              byName: mb.byName,
-                              photo: mb.previewImage?.baseUrl
-                                ? `${mb.previewImage.baseUrl}${mb.previewImage.key}`
-                                : batch.photo,
-                              language: mb.language,
-                              exam: mb.exam?.[0] || batch.exam,
-                            });
-                          }
-                        }}
-                        className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 text-left hover:border-[var(--primary-color)] transition"
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTopTab(tab.id)}
+                        className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-xs sm:text-sm font-extrabold tracking-wide transition ${
+                          active
+                            ? 'border-[var(--primary-color)] text-[var(--primary-color)]'
+                            : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
                       >
-                        <div className="min-w-0">
-                          <h4 className="font-['Sora'] text-sm sm:text-base font-bold text-[var(--text-primary)] truncate">
-                            {mb.name}
-                          </h4>
-                          <p className="mt-0.5 text-xs sm:text-sm text-[var(--text-secondary)] truncate">
-                            Tap to open batch subjects
-                          </p>
-                        </div>
-                        <ExternalLink className="h-5 w-5 shrink-0 text-indigo-400" />
+                        <Icon className="h-3.5 w-3.5" />
+                        <span>{tab.label}</span>
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    );
+                  })}
+                </nav>
+              </div>
 
-              {subjects.length === 0 && mahapackBatches.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-12 text-center text-sm text-[var(--text-secondary)]">
-                  No subjects found for this batch yet.
+              {/* Tab Content */}
+              {activeTopTab === 'tests' ? (
+                <BatchTestsPanel
+                  batch={batch}
+                  subjects={subjects}
+                  onAskAi={handleOpenAiWithPrompt}
+                />
+              ) : activeTopTab === 'khazana' ? (
+                <KhazanaExplorer
+                  programId={khazanaProgramId || undefined}
+                  batchId={batch.batch_id}
+                  batchName={batch.name}
+                  adventureState={adventureState}
+                  onToggleLectureComplete={onToggleLectureComplete}
+                  onPlayLecture={onPlayLecture}
+                />
+              ) : activeTopTab === 'community' ? (
+                <BatchCommunityPanel
+                  batch={batch}
+                  announcements={announcements}
+                  onAskAi={handleOpenAiWithPrompt}
+                />
+              ) : (
+                <div className="space-y-5">
+                  {subjects.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {subjects.map((subj) => {
+                        const imgUrl =
+                          subj.imageId?.baseUrl && subj.imageId?.key
+                            ? `${subj.imageId.baseUrl}${subj.imageId.key}`
+                            : null;
+                        return (
+                          <button
+                            key={subj._id}
+                            onClick={() => handleSelectSubject(subj)}
+                            className="group flex items-center gap-3.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-md"
+                          >
+                            <SubjectIconBadge subjectName={subj.subject} imageUrl={imgUrl} />
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
+                                {subj.subject}
+                              </h4>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
+                                <span className="inline-flex items-center gap-1">
+                                  <BookOpen className="h-3.5 w-3.5 text-[var(--primary-color)]" />
+                                  <span>{subj.tagCount || 0} chapters</span>
+                                </span>
+                                <span aria-hidden="true">•</span>
+                                <span className="inline-flex items-center gap-1">
+                                  <Video className="h-3.5 w-3.5 text-[var(--primary-color)]" />
+                                  <span>{subj.lectureCount || 0} lectures</span>
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-secondary)] group-hover:text-[var(--primary-color)] transition" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {mahapackBatches.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
+                        <Layers className="h-4 w-4 text-purple-400" />
+                        <span>Included Mahapack Batches ({mahapackBatches.length})</span>
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {mahapackBatches.map((mb: any) => (
+                          <button
+                            key={mb._id || mb.batchId}
+                            onClick={() => {
+                              if (onSelectSubBatch) {
+                                onSelectSubBatch({
+                                  batch_id: mb._id || mb.batchId,
+                                  name: mb.name,
+                                  byName: mb.byName,
+                                  photo: mb.previewImage?.baseUrl
+                                    ? `${mb.previewImage.baseUrl}${mb.previewImage.key}`
+                                    : batch.photo,
+                                  language: mb.language,
+                                  exam: mb.exam?.[0] || batch.exam,
+                                });
+                              }
+                            }}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 text-left hover:border-[var(--primary-color)] transition"
+                          >
+                            <div className="min-w-0">
+                              <h4 className="font-['Sora'] text-sm font-bold text-[var(--text-primary)] truncate">
+                                {mb.name}
+                              </h4>
+                              <p className="mt-0.5 text-xs text-[var(--text-secondary)] truncate">
+                                Tap to open batch subjects, tests &amp; Khazana
+                              </p>
+                            </div>
+                            <ExternalLink className="h-4 w-4 shrink-0 text-indigo-400" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {subjects.length === 0 && mahapackBatches.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-10 text-center text-sm text-[var(--text-secondary)]">
+                      No subjects found for this batch yet. Switch to Tests, Khazana, or Community above!
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1663,6 +1741,8 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
             <StudyAiPanel
               variant="drawer"
               scopeKey={`batch:${batch.batch_id}`}
+              initialPrompt={aiInitialPrompt}
+              onConsumeInitialPrompt={() => setAiInitialPrompt(null)}
               context={{
                 batchName: batch.name,
                 subjectName: selectedSubject?.subject,

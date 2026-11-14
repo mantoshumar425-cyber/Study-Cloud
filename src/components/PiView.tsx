@@ -213,19 +213,19 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
   };
 
   return (
-    <div className="space-y-8">
-      {/* Large Pi Header */}
-      <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-9">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm sm:text-base font-bold text-[var(--primary-color)]">
-              <Sigma className="h-5 w-5" />
+    <div className="space-y-5">
+      {/* Compact Pi Header */}
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--primary-color)]">
+              <Sigma className="h-4 w-4" />
               <span>Study Cloud · PW Pi Proxy & Scientific Lab</span>
             </div>
-            <h1 className="font-['Sora'] text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)]">
+            <h1 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
               PW Pi STEM Solver & Study Sandbox
             </h1>
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-3xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
               Solve JEE/NEET numericals via PW Pi Proxy, run scientific expressions with physical
               constants, convert units, and lock in deep Pomodoro focus blocks.
             </p>
@@ -233,32 +233,32 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
           <button
             type="button"
             onClick={() => onAskAi(`Explain how to calculate: ${expr}`)}
-            className="flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-[var(--primary-color)] px-6 py-3.5 text-sm sm:text-base font-bold text-white shadow-sm hover:opacity-90 transition whitespace-nowrap"
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition whitespace-nowrap"
           >
-            <Sparkles className="h-5 w-5" />
+            <Sparkles className="h-4 w-4" />
             <span>Open Full Study AI</span>
           </button>
         </div>
       </div>
 
-      {/* Prominent PW Pi Proxy Solver Card */}
-      <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-8 space-y-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-              <Sparkles className="h-6 w-6 text-[var(--primary-color)]" />
+      {/* PW Pi Proxy Solver Card */}
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[var(--primary-color)]" />
               <span>PW Pi Concept & Numerical Proxy</span>
             </h2>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+            <p className="text-xs text-[var(--text-secondary)]">
               Pick a mode and enter any question, formula derivation, or numerical to solve instantly.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <select
               value={piSubject}
               onChange={(e) => setPiSubject(e.target.value)}
-              className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] focus:outline-none"
+              className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] focus:outline-none"
             >
               <option value="Physics">Physics</option>
               <option value="Chemistry">Chemistry</option>
@@ -278,7 +278,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                 key={m.id}
                 type="button"
                 onClick={() => setPiMode(m.id)}
-                className={`rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold transition ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
                   piMode === m.id
                     ? 'bg-[var(--primary-color)] text-white'
                     : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -290,17 +290,17 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
           </div>
         </div>
 
-        <form onSubmit={(e) => handleAskPwPi(e)} className="space-y-3">
+        <form onSubmit={(e) => handleAskPwPi(e)} className="space-y-2.5">
           <textarea
             value={piQuery}
             onChange={(e) => setPiQuery(e.target.value)}
-            rows={3}
+            rows={2}
             placeholder="e.g. A ball is thrown at 20 m/s at 45° — find max height, range & time of flight (g = 9.8 m/s²)"
-            className="w-full resize-none rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-4 text-sm sm:text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
+            className="w-full resize-none rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {[
                 'Derive Gauss Law for spherical shell',
                 'Electrostatics key formulas & units',
@@ -310,7 +310,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                   key={sample}
                   type="button"
                   onClick={() => handleAskPwPi(undefined, sample)}
-                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs sm:text-sm font-semibold text-[var(--text-secondary)] hover:border-[var(--primary-color)] hover:text-[var(--text-primary)] transition"
+                  className="rounded-lg border border-[var(--card-border)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--primary-color)] hover:text-[var(--text-primary)] transition"
                 >
                   {sample}
                 </button>
@@ -320,36 +320,36 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
             <button
               type="submit"
               disabled={!piQuery.trim() || piLoading}
-              className="flex items-center gap-2 rounded-2xl bg-[var(--primary-color)] px-6 py-3 text-sm sm:text-base font-bold text-white shadow-sm disabled:opacity-50 hover:opacity-90 transition whitespace-nowrap"
+              className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-sm disabled:opacity-50 hover:opacity-90 transition whitespace-nowrap"
             >
-              {piLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              {piLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               <span>{piLoading ? 'Solving via PW Pi...' : 'Solve with PW Pi'}</span>
             </button>
           </div>
         </form>
 
         {piError && (
-          <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            <AlertCircle className="h-5 w-5 shrink-0" />
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{piError}</span>
           </div>
         )}
 
         {piAnswer && (
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 space-y-3">
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--card-border)] pb-3">
-              <span className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--primary-color)]">
+          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--card-border)] pb-2">
+              <span className="font-['Sora'] text-xs sm:text-sm font-extrabold text-[var(--primary-color)]">
                 PW Pi Solution · {piSubject}
               </span>
               <button
                 type="button"
                 onClick={() => onAskAi(`${piQuery}\n\nPrevious PW Pi note:\n${piAnswer}`)}
-                className="text-xs sm:text-sm font-bold text-[var(--primary-color)] hover:underline"
+                className="text-xs font-bold text-[var(--primary-color)] hover:underline"
               >
                 Continue in Study AI
               </button>
             </div>
-            <div className="text-sm sm:text-base text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
+            <div className="text-xs sm:text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
               {piAnswer}
             </div>
           </div>
@@ -357,20 +357,20 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
       </div>
 
       {/* Main 2-Zone Scientific Sandbox: Left Calculator & Constants, Right Focus Timer & Converter */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left Zone (7 cols): Scientific Evaluator + Constants */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-5">
+        <div className="lg:col-span-7 space-y-5">
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-['Sora'] text-lg sm:text-xl font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-                <Calculator className="h-6 w-6 text-[var(--primary-color)]" />
+              <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+                <Calculator className="h-5 w-5 text-[var(--primary-color)]" />
                 <span>Scientific Expression Solver</span>
               </h2>
-              <div className="flex items-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-1 text-xs sm:text-sm font-bold">
+              <div className="flex items-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setUseDegrees(true)}
-                  className={`rounded-lg px-3 py-1.5 transition ${
+                  className={`rounded-lg px-2.5 py-1 transition ${
                     useDegrees ? 'bg-[var(--primary-color)] text-white' : 'text-[var(--text-secondary)]'
                   }`}
                 >
@@ -379,7 +379,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                 <button
                   type="button"
                   onClick={() => setUseDegrees(false)}
-                  className={`rounded-lg px-3 py-1.5 transition ${
+                  className={`rounded-lg px-2.5 py-1 transition ${
                     !useDegrees ? 'bg-[var(--primary-color)] text-white' : 'text-[var(--text-secondary)]'
                   }`}
                 >
@@ -389,36 +389,36 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
             </div>
 
             {/* Input + Result Display */}
-            <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 space-y-3">
+            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 space-y-2.5">
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={expr}
                   onChange={(e) => setExpr(e.target.value)}
                   placeholder="Enter expression e.g. 0.5 * 9.81 * 4^2 or sin(30)"
-                  className="w-full bg-transparent font-mono text-base sm:text-lg text-[var(--text-primary)] focus:outline-none"
+                  className="w-full bg-transparent font-mono text-sm sm:text-base text-[var(--text-primary)] focus:outline-none"
                 />
                 {expr && (
                   <button
                     type="button"
                     onClick={() => setExpr('')}
-                    className="rounded-lg p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    className="rounded-lg p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     title="Clear expression"
                   >
-                    <Delete className="h-5 w-5" />
+                    <Delete className="h-4 w-4" />
                   </button>
                 )}
               </div>
-              <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-3">
-                <span className="text-sm font-semibold text-[var(--text-secondary)]">Result</span>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono tabular-nums text-2xl sm:text-3xl font-extrabold text-[var(--primary-color)]">
+              <div className="flex items-center justify-between border-t border-[var(--card-border)] pt-2.5">
+                <span className="text-xs font-semibold text-[var(--text-secondary)]">Result</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono tabular-nums text-xl sm:text-2xl font-extrabold text-[var(--primary-color)]">
                     {liveResult || '0'}
                   </span>
                   <button
                     type="button"
                     onClick={handleSaveCalculation}
-                    className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-4 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                    className="rounded-lg border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                   >
                     Save
                   </button>
@@ -427,7 +427,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
             </div>
 
             {/* Function Keypad */}
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
               {[
                 { label: 'sin(', token: 'sin(' },
                 { label: 'cos(', token: 'cos(' },
@@ -446,7 +446,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                   key={btn.label}
                   type="button"
                   onClick={() => appendToken(btn.token)}
-                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] py-3 px-2.5 font-mono text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] py-2 px-2 font-mono text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                 >
                   {btn.label}
                 </button>
@@ -455,15 +455,15 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
 
             {/* Recent Saved Calculations */}
             {calcHistory.length > 0 && (
-              <div className="space-y-2 border-t border-[var(--card-border)] pt-3">
-                <div className="text-xs sm:text-sm font-bold text-[var(--text-secondary)]">Saved Steps</div>
-                <div className="space-y-1.5">
+              <div className="space-y-1.5 border-t border-[var(--card-border)] pt-2.5">
+                <div className="text-xs font-bold text-[var(--text-secondary)]">Saved Steps</div>
+                <div className="space-y-1">
                   {calcHistory.map((item, idx) => (
                     <button
                       key={`${item.expr}-${idx}`}
                       type="button"
                       onClick={() => setExpr(item.expr)}
-                      className="flex w-full items-center justify-between rounded-xl px-3.5 py-2 text-left font-mono text-xs sm:text-sm hover:bg-[var(--bg-secondary)] transition"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left font-mono text-xs hover:bg-[var(--bg-secondary)] transition"
                     >
                       <span className="text-[var(--text-secondary)] truncate pr-3">{item.expr}</span>
                       <span className="font-bold text-[var(--primary-color)] tabular-nums shrink-0">
@@ -477,28 +477,28 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
           </div>
 
           {/* Physical Constants Quick Insert */}
-          <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-4">
-            <h3 className="font-['Sora'] text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-              <Atom className="h-6 w-6 text-amber-400" />
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-3">
+            <h3 className="font-['Sora'] text-base font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Atom className="h-5 w-5 text-amber-400" />
               <span>Exam Constants (Click to Insert)</span>
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {CONSTANTS.map((c) => (
                 <button
                   key={c.symbol}
                   type="button"
                   onClick={() => appendToken(c.insert)}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 text-left hover:border-[var(--primary-color)] transition"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3 text-left hover:border-[var(--primary-color)] transition"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-['Sora'] text-lg font-extrabold text-[var(--primary-color)]">
+                    <span className="font-['Sora'] text-base font-extrabold text-[var(--primary-color)]">
                       {c.symbol}
                     </span>
-                    <span className="font-mono tabular-nums text-xs font-bold text-[var(--text-primary)]">
+                    <span className="font-mono tabular-nums text-[11px] font-bold text-[var(--text-primary)]">
                       {c.value.split(' ')[0]}
                     </span>
                   </div>
-                  <div className="mt-1.5 text-xs text-[var(--text-secondary)] truncate">
+                  <div className="mt-1 text-[11px] text-[var(--text-secondary)] truncate">
                     {c.name}
                   </div>
                 </button>
@@ -508,21 +508,21 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
         </div>
 
         {/* Right Zone (5 cols): Pomodoro Focus Timer + Unit Converter */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 space-y-5">
           {/* Focus Pomodoro Timer */}
-          <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-5">
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-['Sora'] text-lg sm:text-xl font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-                <Timer className="h-6 w-6 text-emerald-400" />
+              <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+                <Timer className="h-5 w-5 text-emerald-400" />
                 <span>Pi Focus Timer</span>
               </h2>
-              <span className="flex items-center gap-1.5 font-mono tabular-nums text-xs sm:text-sm font-bold text-emerald-400">
-                <CheckCircle2 className="h-4 w-4" />
+              <span className="flex items-center gap-1 font-mono tabular-nums text-xs font-bold text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
                 {sessionsCompleted} sessions
               </span>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl bg-[var(--bg-secondary)] p-1.5 border border-[var(--card-border)]">
+            <div className="flex items-center gap-1.5 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--card-border)]">
               {[
                 { label: '25m Focus', mins: 25 },
                 { label: '50m Deep', mins: 50 },
@@ -532,7 +532,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                   key={preset.mins}
                   type="button"
                   onClick={() => selectPreset(preset.mins)}
-                  className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition whitespace-nowrap ${
                     presetMinutes === preset.mins
                       ? 'bg-[var(--primary-color)] text-white shadow-sm'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -543,26 +543,26 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
               ))}
             </div>
 
-            <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-7 text-center space-y-4">
-              <div className="font-mono tabular-nums text-5xl sm:text-6xl font-extrabold text-[var(--text-primary)] tracking-tight">
+            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 text-center space-y-3">
+              <div className="font-mono tabular-nums text-4xl sm:text-5xl font-extrabold text-[var(--text-primary)] tracking-tight">
                 {formatTimer(secondsLeft)}
               </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
                 <div
                   className="h-full rounded-full bg-[var(--primary-color)] transition-all duration-300"
                   style={{ width: `${timerProgress}%` }}
                 />
               </div>
-              <div className="flex items-center justify-center gap-3 pt-1">
+              <div className="flex items-center justify-center gap-2.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => {
                     if (secondsLeft === 0) setSecondsLeft(presetMinutes * 60);
                     setIsRunning((r) => !r);
                   }}
-                  className="flex items-center gap-2 rounded-2xl bg-[var(--primary-color)] px-6 py-3 text-sm sm:text-base font-bold text-white shadow-sm hover:opacity-90 transition"
+                  className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
                 >
-                  {isRunning ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  {isRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   <span>{isRunning ? 'Pause' : secondsLeft === 0 ? 'Restart' : 'Start Focus'}</span>
                 </button>
                 <button
@@ -571,23 +571,23 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                     setIsRunning(false);
                     setSecondsLeft(presetMinutes * 60);
                   }}
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
                   title="Reset timer"
                 >
-                  <RotateCcw className="h-5 w-5" />
+                  <RotateCcw className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
 
           {/* Unit Converter */}
-          <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-7 space-y-4">
-            <h3 className="font-['Sora'] text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
-              <ArrowRightLeft className="h-6 w-6 text-sky-400" />
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-3">
+            <h3 className="font-['Sora'] text-base font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-sky-400" />
               <span>Science Unit Converter</span>
             </h3>
 
-            <div className="grid grid-cols-4 gap-1.5 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--card-border)]">
+            <div className="grid grid-cols-4 gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--card-border)]">
               {(
                 [
                   { id: 'energy', label: 'Energy' },
@@ -600,7 +600,7 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
                   key={tab.id}
                   type="button"
                   onClick={() => setUnitCategory(tab.id)}
-                  className={`rounded-lg py-2 text-xs sm:text-sm font-bold transition ${
+                  className={`rounded-lg py-1.5 text-xs font-bold transition ${
                     unitCategory === tab.id
                       ? 'bg-[var(--primary-color)] text-white'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -616,14 +616,14 @@ export const PiView: React.FC<PiViewProps> = ({ onAskAi, onActivityUpdate }) => 
               value={unitInput}
               onChange={(e) => setUnitInput(e.target.value)}
               placeholder="Enter numeric value"
-              className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 font-mono text-base text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 font-mono text-sm text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
             />
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {unitConversions.map((row) => (
                 <div
                   key={row.label}
-                  className="flex items-center justify-between rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-xs sm:text-sm"
+                  className="flex items-center justify-between rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs"
                 >
                   <span className="text-[var(--text-secondary)]">{row.label}</span>
                   <span className="font-mono tabular-nums font-bold text-[var(--text-primary)]">

@@ -306,17 +306,17 @@ export default function App() {
 
         {/* Offline Toast */}
         {!isOnline && (
-          <div className="sticky top-[72px] z-20 flex items-center justify-center gap-2 bg-amber-500 py-2 px-4 text-xs sm:text-sm font-bold text-white shadow-md">
-            <WifiOff className="h-4 w-4" />
+          <div className="sticky top-[58px] z-20 flex items-center justify-center gap-2 bg-amber-500 py-1.5 px-3 text-xs font-bold text-white shadow-md">
+            <WifiOff className="h-3.5 w-3.5" />
             <span>Offline Mode — Cached study batches and saved history are active.</span>
           </div>
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 pb-20 lg:pb-8">
+        <main className="flex-1 pb-16 lg:pb-6">
           {/* VIEW 1: STUDY AI */}
           {currentTab === 'ai' ? (
-            <div className="mx-auto max-w-7xl px-3 sm:px-6 py-4">
+            <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4">
               <StudyAiPanel
                 variant="page"
                 scopeKey="global"
@@ -326,7 +326,7 @@ export default function App() {
             </div>
           ) : currentTab === 'pi' ? (
             /* VIEW 1A: PI SCIENTIFIC & FOCUS WORKSPACE */
-            <div className="w-full px-4 sm:px-7 lg:px-10 py-6 sm:py-8">
+            <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <PiView
                 onAskAi={(prompt) => handleAskAi(prompt)}
                 onActivityUpdate={() => setAdventureState(getAdventureState())}
@@ -334,7 +334,7 @@ export default function App() {
             </div>
           ) : currentTab === 'community' ? (
             /* VIEW 1B: STUDENT COMMUNITY & CHANNELS */
-            <div className="w-full px-4 sm:px-7 lg:px-10 py-6 sm:py-8">
+            <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <CommunityView
                 appControls={appControls}
                 myBatches={myBatches}
@@ -345,7 +345,7 @@ export default function App() {
             </div>
           ) : currentTab === 'test' ? (
             /* VIEW 1C: TEST CBT PRACTICE & AI MOCK EXAM */
-            <div className="w-full px-4 sm:px-7 lg:px-10 py-6 sm:py-8">
+            <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <TestView
                 myBatches={myBatches}
                 allBatches={allBatches}
@@ -355,7 +355,7 @@ export default function App() {
             </div>
           ) : currentTab === 'khazana' ? (
             /* VIEW 1D: KHAZANA LECTURE VAULT */
-            <div className="w-full px-4 sm:px-7 lg:px-10 py-6 sm:py-8">
+            <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <KhazanaExplorer
                 adventureState={adventureState}
                 onToggleLectureComplete={(params) => setAdventureState(toggleLectureCompleted(params))}
@@ -384,7 +384,7 @@ export default function App() {
             </div>
           ) : currentTab === 'favorites' ? (
           /* VIEW 2: FAVORITES */
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+          <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4 sm:py-5">
             <FavoritesView
               favoriteBatches={favoriteBatchItems}
               onToggleFavorite={handleToggleFavorite}
@@ -394,7 +394,7 @@ export default function App() {
           </div>
         ) : currentTab === 'history' ? (
           /* VIEW 3: WATCH HISTORY */
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+          <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4 sm:py-5">
             <WatchHistoryView
               history={watchHistory}
               onPlayItem={(item) => {
@@ -425,7 +425,7 @@ export default function App() {
           </div>
         ) : currentTab === 'settings' ? (
           /* VIEW 4: SETTINGS */
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+          <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4 sm:py-5">
             <SettingsView
               currentTheme={currentTheme}
               onOpenThemes={() => setIsThemeModalOpen(true)}
@@ -448,13 +448,13 @@ export default function App() {
             />
           </div>
         ) : (
-          /* VIEW 5: BATCHES & SEARCH (Full-Width Enlarged App View) */
-          <div className="w-full px-4 sm:px-7 lg:px-10 py-6 sm:py-8 space-y-7">
+          /* VIEW 5: BATCHES & SEARCH */
+          <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5 space-y-5">
             {/* Batch Adventure & Streak Hub */}
-            <div className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-6 sm:p-9 shadow-sm">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base text-[var(--text-secondary)]">
+            <div className="relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-6 shadow-sm">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]">
                     <span className="font-bold text-[var(--primary-color)]">
                       Study Cloud · Lv.{adventureMetrics.level} {adventureMetrics.rank}
                     </span>
@@ -463,49 +463,49 @@ export default function App() {
                       {allBatches.length > 0 ? `${allBatches.length.toLocaleString()} Batches` : 'Loading Batches...'}
                     </span>
                   </div>
-                  <h1 className="font-['Sora'] text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[var(--text-primary)] leading-tight">
+                  <h1 className="font-['Sora'] text-xl sm:text-2xl lg:text-3xl font-extrabold text-[var(--text-primary)] leading-tight">
                     Study Cloud — Batches & Learning Hub
                   </h1>
-                  <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-2xl leading-relaxed">
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
                     Track your daily study streak, explore Khazana, PW Pi, PW Community, PW Test, and stream
                     lectures with notes inside one distraction-free workspace.
                   </p>
                 </div>
 
                 {/* Live Adventure Stats + Add Batch Controls */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-                  <div className="grid grid-cols-3 gap-5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-6 py-4 text-center">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="grid grid-cols-3 gap-3.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-center">
                     <div>
-                      <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-xl font-extrabold text-amber-400">
-                        <Flame className="h-5 w-5" />
+                      <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-base sm:text-lg font-extrabold text-amber-400">
+                        <Flame className="h-4 w-4" />
                         <span>{adventureMetrics.currentStreak}d</span>
                       </div>
-                      <div className="text-xs sm:text-sm text-[var(--text-secondary)]">Streak</div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">Streak</div>
                     </div>
                     <div>
-                      <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-xl font-extrabold text-emerald-400">
-                        <Trophy className="h-5 w-5" />
+                      <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-base sm:text-lg font-extrabold text-emerald-400">
+                        <Trophy className="h-4 w-4" />
                         <span>{adventureMetrics.xp}</span>
                       </div>
-                      <div className="text-xs sm:text-sm text-[var(--text-secondary)]">Total XP</div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">Total XP</div>
                     </div>
                     <div>
-                      <div className="font-mono tabular-nums text-xl font-extrabold text-[var(--text-primary)]">
+                      <div className="font-mono tabular-nums text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
                         {adventureMetrics.completedCount}
                       </div>
-                      <div className="text-xs sm:text-sm text-[var(--text-secondary)]">Cleared</div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">Cleared</div>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => {
                         setCurrentTab('khazana');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className="flex flex-1 sm:flex-initial items-center justify-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/15 px-5 py-3.5 text-sm font-bold text-amber-400 hover:bg-amber-500/25 transition whitespace-nowrap"
+                      className="flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/15 px-3.5 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/25 transition whitespace-nowrap"
                     >
-                      <Gem className="h-5 w-5" />
+                      <Gem className="h-4 w-4" />
                       <span>Khazana</span>
                     </button>
                     <button
@@ -513,16 +513,16 @@ export default function App() {
                         setActiveCategory('mybatches');
                         setDisplayCount(36);
                       }}
-                      className="flex flex-1 sm:flex-initial items-center justify-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-3.5 text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition whitespace-nowrap"
+                      className="flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition whitespace-nowrap"
                     >
-                      <Compass className="h-5 w-5 text-[var(--primary-color)]" />
+                      <Compass className="h-4 w-4 text-[var(--primary-color)]" />
                       <span>My Batches ({myBatches.length})</span>
                     </button>
                     <button
                       onClick={() => setIsAddBatchModalOpen(true)}
-                      className="flex flex-1 sm:flex-initial items-center justify-center gap-2 rounded-2xl bg-[var(--primary-color)] px-6 py-3.5 text-sm font-bold text-white shadow-md hover:opacity-90 transition active:scale-95 whitespace-nowrap"
+                      className="flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90 transition active:scale-95 whitespace-nowrap"
                     >
-                      <Plus className="h-5 w-5" />
+                      <Plus className="h-4 w-4" />
                       <span>Add Batch</span>
                     </button>
                   </div>
@@ -531,10 +531,10 @@ export default function App() {
             </div>
 
             {/* Search Input & Filters Box */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3.5">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
               {/* Search Bar */}
               <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--text-secondary)]" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -543,12 +543,12 @@ export default function App() {
                     setDisplayCount(36);
                   }}
                   placeholder="Search 18,000+ batches by name, exam (JEE, NEET), teacher, or class..."
-                  className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] py-4 pl-12 pr-16 text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)] shadow-sm focus:border-[var(--primary-color)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/20 transition"
+                  className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] py-2.5 pl-10 pr-14 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] shadow-sm focus:border-[var(--primary-color)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)]/20 transition"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   >
                     Clear
                   </button>
@@ -556,14 +556,14 @@ export default function App() {
               </div>
 
               {/* Language & Class Filters */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <select
                   value={selectedLanguage}
                   onChange={(e) => {
                     setSelectedLanguage(e.target.value);
                     setDisplayCount(36);
                   }}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-4 text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2.5 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
                 >
                   <option value="all">Language: All</option>
                   <option value="hinglish">Hinglish</option>
@@ -577,7 +577,7 @@ export default function App() {
                     setSelectedClass(e.target.value);
                     setDisplayCount(36);
                   }}
-                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-4 text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
+                  className="rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2.5 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--primary-color)]"
                 >
                   <option value="all">Class: All</option>
                   <option value="12">Class 12</option>
@@ -590,7 +590,7 @@ export default function App() {
             </div>
 
             {/* Category Filter Tabs (Horizontal Scroll) */}
-            <div className="flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar">
               {categories.map((cat) => {
                 const isActive = activeCategory === cat.id;
                 const Icon = cat.icon;
@@ -601,17 +601,17 @@ export default function App() {
                       setActiveCategory(cat.id);
                       setDisplayCount(36);
                     }}
-                    className={`flex shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm sm:text-base font-bold transition-all ${
+                    className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold transition-all ${
                       isActive
-                        ? 'bg-[var(--primary-color)] text-white shadow-md shadow-indigo-600/20 scale-[1.02]'
+                        ? 'bg-[var(--primary-color)] text-white shadow-sm shadow-indigo-600/20'
                         : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--primary-color)]/40 hover:text-[var(--text-primary)]'
                     }`}
                   >
-                    {Icon && <Icon className="h-4 w-4" />}
+                    {Icon && <Icon className="h-3.5 w-3.5" />}
                     <span>{cat.label}</span>
                     {cat.count && (
                       <span
-                        className={`rounded-lg px-2 py-0.5 text-xs ${
+                        className={`rounded-md px-1.5 py-0.5 text-[11px] ${
                           isActive ? 'bg-white/20 text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
                         }`}
                       >
@@ -624,7 +624,7 @@ export default function App() {
             </div>
 
             {/* Results Status */}
-            <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-secondary)]">
+            <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
               <span>
                 Showing <strong className="text-[var(--text-primary)]">{displayedBatches.length}</strong> of{' '}
                 <strong className="text-[var(--text-primary)]">{filteredBatches.length.toLocaleString()}</strong> batches
@@ -638,12 +638,12 @@ export default function App() {
 
             {/* Error Banner if catalog failed */}
             {batchError && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-300">
+              <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs sm:text-sm text-red-300">
                 <span>Could not refresh batch catalog: {batchError}</span>
                 <button
                   type="button"
                   onClick={() => loadBatches()}
-                  className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-500 transition"
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-500 transition"
                 >
                   Retry
                 </button>
@@ -653,29 +653,29 @@ export default function App() {
             {/* Batches Grid */}
             {isLoadingBatches ? (
               /* Skeletons */
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
                   <div
                     key={i}
-                    className="flex flex-col overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] animate-pulse"
+                    className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] animate-pulse"
                   >
                     <div className="aspect-video w-full bg-[var(--bg-tertiary)]" />
-                    <div className="p-5 space-y-3">
-                      <div className="h-5 w-3/4 rounded bg-[var(--bg-tertiary)]" />
-                      <div className="h-4 w-1/2 rounded bg-[var(--bg-tertiary)]" />
-                      <div className="h-4 w-full rounded bg-[var(--bg-tertiary)]" />
+                    <div className="p-4 space-y-2.5">
+                      <div className="h-4 w-3/4 rounded bg-[var(--bg-tertiary)]" />
+                      <div className="h-3.5 w-1/2 rounded bg-[var(--bg-tertiary)]" />
+                      <div className="h-3.5 w-full rounded bg-[var(--bg-tertiary)]" />
                     </div>
                   </div>
                 ))}
               </div>
             ) : filteredBatches.length === 0 ? (
               /* Empty state */
-              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)]/50 p-12 text-center">
-                <GraduationCap className="h-14 w-14 text-slate-500 mb-3" />
-                <h3 className="font-['Sora'] text-lg font-bold text-[var(--text-primary)]">
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)]/50 p-8 text-center">
+                <GraduationCap className="h-10 w-10 text-slate-500 mb-2.5" />
+                <h3 className="font-['Sora'] text-base font-bold text-[var(--text-primary)]">
                   No Batches Found
                 </h3>
-                <p className="mt-1.5 text-sm text-[var(--text-secondary)] max-w-sm">
+                <p className="mt-1 text-xs sm:text-sm text-[var(--text-secondary)] max-w-sm">
                   We couldn't find any batches matching your filter. Try adjusting your keyword or
                   selecting "All Batches".
                 </p>
@@ -686,14 +686,14 @@ export default function App() {
                     setSelectedLanguage('all');
                     setSelectedClass('all');
                   }}
-                  className="mt-5 rounded-2xl bg-[var(--primary-color)] px-5 py-2.5 text-sm font-bold text-white shadow-md hover:opacity-90"
+                  className="mt-4 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90"
                 >
                   Reset Filters
                 </button>
               </div>
             ) : (
-              /* Real Batch Cards (Spacious Full-Width Grid) */
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              /* Compact 4-col Responsive Batch Cards Grid */
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {displayedBatches.map((batch) => (
                   <BatchCard
                     key={batch.batch_id}
@@ -709,12 +709,12 @@ export default function App() {
 
             {/* Load More Button */}
             {displayedBatches.length < filteredBatches.length && (
-              <div className="flex justify-center pt-4">
+              <div className="flex justify-center pt-2">
                 <button
                   onClick={() => setDisplayCount((prev) => prev + 36)}
-                  className="flex items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] px-7 py-3.5 text-sm font-bold text-[var(--text-primary)] shadow-sm hover:border-[var(--primary-color)] hover:bg-[var(--bg-tertiary)] transition active:scale-95"
+                  className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-5 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] shadow-sm hover:border-[var(--primary-color)] hover:bg-[var(--bg-tertiary)] transition active:scale-95"
                 >
-                  <RefreshCw className="h-4 w-4 text-[var(--primary-color)]" />
+                  <RefreshCw className="h-3.5 w-3.5 text-[var(--primary-color)]" />
                   <span>
                     Load More Batches ({(filteredBatches.length - displayedBatches.length).toLocaleString()} remaining)
                   </span>

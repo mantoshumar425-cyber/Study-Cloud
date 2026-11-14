@@ -108,6 +108,10 @@ export interface ScheduledClassItem {
   topicName?: string;
   topicId?: string;
   teacherNames?: string[];
+  teacherImages?: string[];
+  teacherImage?: string;
+  tag?: string;
+  isCancelled?: boolean;
   isDPPVideos?: boolean;
   isDPPNotes?: boolean;
   videoDetails?: {

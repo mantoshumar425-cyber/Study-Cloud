@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
-  BookOpen,
   Calendar,
   Check,
   CheckCircle2,
@@ -12,7 +11,6 @@ import {
   FileText,
   Gem,
   GraduationCap,
-  Layers,
   Loader2,
   Play,
   RefreshCw,
@@ -48,6 +46,7 @@ import {
 } from '../services/batchService';
 import { isLectureCompleted } from '../services/adventureService';
 import type { PlayLecturePayload } from './BatchDetailsModal';
+import { SubjectIconBadge } from './SubjectIconBadge';
 
 interface KhazanaExplorerProps {
   programId?: string;
@@ -206,7 +205,15 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
 
   // Sync embedded program prop changes
   useEffect(() => {
-    if (!initialProgramId) return;
+    if (!initialProgramId) {
+      setActiveProgram(null);
+      setLevel('programs');
+      setSelectedSubject(null);
+      setSelectedTeacher(null);
+      setSelectedChapter(null);
+      setSelectedTopic(null);
+      return;
+    }
     setActiveProgram({
       programId: initialProgramId,
       batchId: initialBatchId || initialProgramId,
@@ -954,9 +961,9 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                         key={subj._id}
                         onClick={() => handleOpenSubjectChapters(subj)}
                         disabled={loadingSubjectId === subj._id}
-                        className="flex shrink-0 items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] transition"
+                        className="flex shrink-0 items-center gap-2.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] transition"
                       >
-                        <BookOpen className="h-4 w-4 text-amber-400" />
+                        <SubjectIconBadge subjectName={subj.name} size="sm" />
                         <span>{subj.name}</span>
                         <ChevronRight className="h-3.5 w-3.5 opacity-60" />
                       </button>
@@ -972,8 +979,8 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                 return (
                   <div key={subj._id} className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
-                        <Layers className="h-4 w-4 text-[var(--primary-color)]" />
+                      <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
+                        <SubjectIconBadge subjectName={subj.name} size="sm" />
                         <span>{subj.name}</span>
                       </h3>
                       <button
