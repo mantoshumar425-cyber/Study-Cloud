@@ -18,6 +18,12 @@ import {
   KhazanaTopic,
   KhazanaSubTopic,
   KhazanaContentItem,
+  BatchExerciseItem,
+  OfficialBatchTest,
+  PiCategory,
+  PiHomeResponse,
+  PiTeacherProfileResponse,
+  PiSeriesDetailResponse,
 } from '../types';
 
 const LEGACY_CACHE_KEY = 'vidcloud_batches_cache';
@@ -37,6 +43,70 @@ type BatchCatalogResult = {
 };
 
 let memoryCatalog: { data: BatchCatalogResult; savedAt: number } | null = null;
+let fullCatalogInFlight: Promise<BatchCatalogResult> | null = null;
+
+// Client Single-Flight Stale-While-Revalidate (SWR) LRU Cache
+const clientSwrCache = new Map<string, { data: any; savedAt: number }>();
+const clientInFlight = new Map<string, Promise<any>>();
+const MAX_CLIENT_CACHE = 250;
+
+function setClientCache(key: string, data: any): void {
+  if (clientSwrCache.size >= MAX_CLIENT_CACHE) {
+    const oldest = clientSwrCache.keys().next().value;
+    if (oldest) clientSwrCache.delete(oldest);
+  }
+  clientSwrCache.set(key, { data, savedAt: Date.now() });
+}
+
+async function clientSwrFetch<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlMs = 3 * 60 * 1000,
+  maxStaleMs = 30 * 60 * 1000
+): Promise<T> {
+  const now = Date.now();
+  const cached = clientSwrCache.get(key);
+  if (cached) {
+    const age = now - cached.savedAt;
+    if (age < ttlMs) {
+      return cached.data as T;
+    }
+    if (age < maxStaleMs) {
+      if (!clientInFlight.has(key)) {
+        const bg = fetcher()
+          .then((fresh) => {
+            setClientCache(key, fresh);
+            return fresh;
+          })
+          .catch(() => cached.data)
+          .finally(() => {
+            clientInFlight.delete(key);
+          });
+        clientInFlight.set(key, bg);
+      }
+      return cached.data as T;
+    }
+  }
+
+  const existing = clientInFlight.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const p = fetcher()
+    .then((fresh) => {
+      setClientCache(key, fresh);
+      return fresh;
+    })
+    .catch((err) => {
+      if (cached) return cached.data as T;
+      throw err;
+    })
+    .finally(() => {
+      clientInFlight.delete(key);
+    });
+
+  clientInFlight.set(key, p);
+  return p;
+}
 
 function sortBatchesNewestFirst(list: BatchItem[]): BatchItem[] {
   const seen = new Set<string>();
@@ -133,6 +203,79 @@ function purgeLegacyTruncatedCache(): void {
   }
 }
 
+function mapBatchItems(raw: any[], isVidyapeeth: boolean): BatchItem[] {
+  return sortBatchesNewestFirst(
+    (raw || []).map((b: any) => ({
+      batch_id: b.batch_id,
+      name: b.name,
+      byName: b.byName,
+      language: b.language,
+      exam: b.exam,
+      photo: b.photo,
+      class: b.class,
+      start_date: b.start_date,
+      end_date: b.end_date,
+      amount: b.amount,
+      isVidyapeeth,
+    }))
+  );
+}
+
+/**
+ * Two-stage Instant First-Paint catalog loader:
+ * 1) Memory / IndexedDB cache (<10ms)
+ * 2) Cold visitor: fetches fast slice `/api/batches?limit=90` (~18KB) to render immediately,
+ *    while downloading full 18k gzipped catalog in background and invoking `onFullHydrated`.
+ */
+export async function fetchFastBatchesAndHydrate(
+  onFullHydrated?: (fullData: BatchCatalogResult) => void
+): Promise<BatchCatalogResult> {
+  purgeLegacyTruncatedCache();
+
+  if (memoryCatalog && memoryCatalog.data.batches.length > 5000) {
+    if (Date.now() - memoryCatalog.savedAt > 30 * 60 * 1000) {
+      void fetchFreshBatches().then((full) => onFullHydrated?.(full)).catch(() => {});
+    }
+    return memoryCatalog.data;
+  }
+
+  const cached = await readIdbCatalog();
+  if (cached && Array.isArray(cached.data?.batches) && cached.data.batches.length > 5000) {
+    memoryCatalog = cached;
+    if (Date.now() - cached.savedAt > 30 * 60 * 1000) {
+      void fetchFreshBatches().then((full) => onFullHydrated?.(full)).catch(() => {});
+    }
+    return cached.data;
+  }
+
+  // Kick off full catalog hydration silently in background
+  const fullPromise = fetchFreshBatches()
+    .then((fullData) => {
+      onFullHydrated?.(fullData);
+      return fullData;
+    })
+    .catch(() => null);
+
+  try {
+    const fastRes = await fetch('/api/batches?limit=90');
+    if (fastRes.ok) {
+      const json = await fastRes.json();
+      const fastData: BatchCatalogResult = {
+        batches: mapBatchItems(json.data || [], false),
+        vidyapeeth: mapBatchItems(json.vidyapeeth_batches || [], true),
+      };
+      if (fastData.batches.length > 0) {
+        return fastData;
+      }
+    }
+  } catch {
+    // fall through to awaiting fullPromise
+  }
+
+  const fullFallback = await fullPromise;
+  return fullFallback || getFallbackBatches();
+}
+
 export async function fetchAllBatches(): Promise<BatchCatalogResult> {
   purgeLegacyTruncatedCache();
 
@@ -159,58 +302,36 @@ export async function fetchAllBatches(): Promise<BatchCatalogResult> {
 }
 
 async function fetchFreshBatches(): Promise<BatchCatalogResult> {
-  try {
-    let response = await fetch('/api/batches');
-    if (!response.ok) {
-      response = await fetch('https://studystark.github.io/batches/batches.json');
-    }
-    if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
-    }
-    const json = await response.json();
-    const batches: BatchItem[] = sortBatchesNewestFirst(
-      (json.data || []).map((b: any) => ({
-        batch_id: b.batch_id,
-        name: b.name,
-        byName: b.byName,
-        language: b.language,
-        exam: b.exam,
-        photo: b.photo,
-        class: b.class,
-        start_date: b.start_date,
-        end_date: b.end_date,
-        amount: b.amount,
-        isVidyapeeth: false,
-      }))
-    );
-    const vidyapeeth: BatchItem[] = sortBatchesNewestFirst(
-      (json.vidyapeeth_batches || []).map((b: any) => ({
-        batch_id: b.batch_id,
-        name: b.name,
-        byName: b.byName,
-        language: b.language,
-        exam: b.exam,
-        photo: b.photo,
-        class: b.class,
-        start_date: b.start_date,
-        end_date: b.end_date,
-        amount: b.amount,
-        isVidyapeeth: true,
-      }))
-    );
+  if (fullCatalogInFlight) return fullCatalogInFlight;
+  fullCatalogInFlight = (async () => {
+    try {
+      let response = await fetch('/api/batches');
+      if (!response.ok) {
+        response = await fetch('https://studystark.github.io/batches/batches.json');
+      }
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const json = await response.json();
+      const batches = mapBatchItems(json.data || [], false);
+      const vidyapeeth = mapBatchItems(json.vidyapeeth_batches || [], true);
 
-    const result: BatchCatalogResult = { batches, vidyapeeth };
-    memoryCatalog = { data: result, savedAt: Date.now() };
-    void writeIdbCatalog(result);
-    return result;
-  } catch (err) {
-    console.warn('Failed to fetch batches, trying cached catalog:', err);
-    const cached = await readIdbCatalog();
-    if (cached?.data?.batches?.length) {
-      return cached.data;
+      const result: BatchCatalogResult = { batches, vidyapeeth };
+      memoryCatalog = { data: result, savedAt: Date.now() };
+      void writeIdbCatalog(result);
+      return result;
+    } catch (err) {
+      console.warn('Failed to fetch batches, trying cached catalog:', err);
+      const cached = await readIdbCatalog();
+      if (cached?.data?.batches?.length) {
+        return cached.data;
+      }
+      return getFallbackBatches();
+    } finally {
+      fullCatalogInFlight = null;
     }
-    return getFallbackBatches();
-  }
+  })();
+  return fullCatalogInFlight;
 }
 
 function refreshBatchesInBackground() {
@@ -224,20 +345,58 @@ export async function fetchBatchDetails(batchId: string): Promise<{
   mahapackBatches: any[];
   announcements: any[];
 }> {
-  const res = await fetch(`/api/batch/${encodeURIComponent(batchId)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to load batch details (${res.status})`);
-  }
-  return res.json();
+  return clientSwrFetch(
+    `batch-detail:${batchId}`,
+    async () => {
+      const res = await fetch(`/api/batch/${encodeURIComponent(batchId)}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load batch details (${res.status})`);
+      }
+      return res.json();
+    },
+    4 * 60 * 1000,
+    30 * 60 * 1000
+  );
 }
 
 export async function fetchKhazanaPrograms(): Promise<KhazanaProgramSummary[]> {
-  const res = await fetch('/api/khazana/programs');
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana programs (${res.status})`);
-  }
-  const json = await res.json();
-  return json.programs || [];
+  return clientSwrFetch(
+    'kh:programs',
+    async () => {
+      const res = await fetch('/api/khazana/programs');
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana programs (${res.status})`);
+      }
+      const json = await res.json();
+      return json.programs || [];
+    },
+    10 * 60 * 1000,
+    60 * 60 * 1000
+  );
+}
+
+export interface KhazanaOverviewResponse {
+  programId: string;
+  name: string;
+  subjects: KhazanaSubjectOption[];
+  teachers: KhazanaTeacher[];
+  paginate: any;
+  subjectPreviews: Record<string, KhazanaChapter[]>;
+}
+
+export async function fetchKhazanaOverview(programId: string): Promise<KhazanaOverviewResponse> {
+  return clientSwrFetch(
+    `kh:overview:${programId}`,
+    async () => {
+      const res = await fetch(`/api/khazana/${encodeURIComponent(programId)}/overview`);
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana overview (${res.status})`);
+      }
+      return res.json();
+    },
+    6 * 60 * 1000,
+    45 * 60 * 1000
+  );
 }
 
 export async function fetchKhazanaFilters(programId: string): Promise<{
@@ -245,22 +404,36 @@ export async function fetchKhazanaFilters(programId: string): Promise<{
   name: string;
   subjects: KhazanaSubjectOption[];
 }> {
-  const res = await fetch(`/api/khazana/${encodeURIComponent(programId)}/filters`);
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana subjects (${res.status})`);
-  }
-  return res.json();
+  return clientSwrFetch(
+    `kh:filters:${programId}`,
+    async () => {
+      const res = await fetch(`/api/khazana/${encodeURIComponent(programId)}/filters`);
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana subjects (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
+  );
 }
 
 export async function fetchKhazanaTeachers(
   programId: string,
   page = 1
 ): Promise<{ teachers: KhazanaTeacher[]; paginate: any }> {
-  const res = await fetch(`/api/khazana/${encodeURIComponent(programId)}/teachers?page=${page}`);
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana teachers (${res.status})`);
-  }
-  return res.json();
+  return clientSwrFetch(
+    `kh:teachers:${programId}:${page}`,
+    async () => {
+      const res = await fetch(`/api/khazana/${encodeURIComponent(programId)}/teachers?page=${page}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana teachers (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
+  );
 }
 
 export async function fetchKhazanaSubjectChapters(
@@ -269,13 +442,20 @@ export async function fetchKhazanaSubjectChapters(
   page = 1,
   limit = 12
 ): Promise<{ chapters: KhazanaChapter[]; paginate: any }> {
-  const res = await fetch(
-    `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters?page=${page}&limit=${limit}`
+  return clientSwrFetch(
+    `kh:subj-chaps:${programId}:${subjectId}:${page}:${limit}`,
+    async () => {
+      const res = await fetch(
+        `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters?page=${page}&limit=${limit}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana subject courses (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana subject courses (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchKhazanaTeacherChapters(
@@ -284,13 +464,20 @@ export async function fetchKhazanaTeacherChapters(
   page = 1,
   limit = 20
 ): Promise<{ chapters: KhazanaChapter[]; paginate: any }> {
-  const res = await fetch(
-    `/api/khazana/${encodeURIComponent(programId)}/teachers/${encodeURIComponent(teacherId)}/chapters?page=${page}&limit=${limit}`
+  return clientSwrFetch(
+    `kh:teacher-chaps:${programId}:${teacherId}:${page}:${limit}`,
+    async () => {
+      const res = await fetch(
+        `/api/khazana/${encodeURIComponent(programId)}/teachers/${encodeURIComponent(teacherId)}/chapters?page=${page}&limit=${limit}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load faculty courses (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load faculty courses (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchKhazanaTopics(
@@ -300,13 +487,20 @@ export async function fetchKhazanaTopics(
   page = 1,
   limit = 20
 ): Promise<{ topics: KhazanaTopic[]; paginate: any }> {
-  const res = await fetch(
-    `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics?page=${page}&limit=${limit}`
+  return clientSwrFetch(
+    `kh:topics:${programId}:${subjectId}:${chapterId}:${page}:${limit}`,
+    async () => {
+      const res = await fetch(
+        `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics?page=${page}&limit=${limit}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana chapters (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana chapters (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchKhazanaSubTopics(
@@ -315,13 +509,20 @@ export async function fetchKhazanaSubTopics(
   chapterId: string,
   topicId: string
 ): Promise<{ subTopics: KhazanaSubTopic[] }> {
-  const res = await fetch(
-    `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics/${encodeURIComponent(topicId)}/sub-topics`
+  return clientSwrFetch(
+    `kh:subtopics:${programId}:${subjectId}:${chapterId}:${topicId}`,
+    async () => {
+      const res = await fetch(
+        `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics/${encodeURIComponent(topicId)}/sub-topics`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana content tabs (${res.status})`);
+      }
+      return res.json();
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana content tabs (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchKhazanaContents(
@@ -333,13 +534,20 @@ export async function fetchKhazanaContents(
   page = 1,
   limit = 20
 ): Promise<{ items: KhazanaContentItem[]; paginate: any }> {
-  const res = await fetch(
-    `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics/${encodeURIComponent(topicId)}/sub-topics/${encodeURIComponent(subTopicId)}/contents?page=${page}&limit=${limit}`
+  return clientSwrFetch(
+    `kh:contents:${programId}:${subjectId}:${chapterId}:${topicId}:${subTopicId}:${page}:${limit}`,
+    async () => {
+      const res = await fetch(
+        `/api/khazana/${encodeURIComponent(programId)}/subjects/${encodeURIComponent(subjectId)}/chapters/${encodeURIComponent(chapterId)}/topics/${encodeURIComponent(topicId)}/sub-topics/${encodeURIComponent(subTopicId)}/contents?page=${page}&limit=${limit}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load Khazana contents (${res.status})`);
+      }
+      return res.json();
+    },
+    4 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load Khazana contents (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchSubjectTopics(
@@ -347,42 +555,63 @@ export async function fetchSubjectTopics(
   subjectSlug: string,
   page = 1
 ): Promise<{ topics: BatchTopic[]; paginate: any }> {
-  const res = await fetch(
-    `/api/topics/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?page=${page}`
+  return clientSwrFetch(
+    `topics:${batchId}:${subjectSlug}:${page}`,
+    async () => {
+      const res = await fetch(
+        `/api/topics/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?page=${page}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load chapters (${res.status})`);
+      }
+      return res.json();
+    },
+    4 * 60 * 1000,
+    30 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load chapters (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchTopicContents(
   batchId: string,
   subjectSlug: string,
   topicId: string,
-  contentType: 'videos' | 'notes' | 'DppNotes' | 'DppVideos' = 'videos',
+  contentType: 'videos' | 'notes' | 'DppNotes' | 'DppVideos' | 'exercises' = 'videos',
   page = 1
-): Promise<{ items: Array<BatchVideoItem | BatchNoteItem>; paginate: any }> {
-  const params = new URLSearchParams({
-    topicId,
-    contentType,
-    page: String(page),
-  });
-  const res = await fetch(
-    `/api/contents/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?${params.toString()}`
+): Promise<{ items: Array<BatchVideoItem | BatchNoteItem | BatchExerciseItem>; paginate: any }> {
+  return clientSwrFetch(
+    `contents:${batchId}:${subjectSlug}:${topicId}:${contentType}:${page}`,
+    async () => {
+      const params = new URLSearchParams({
+        topicId,
+        contentType,
+        page: String(page),
+      });
+      const res = await fetch(
+        `/api/contents/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?${params.toString()}`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load contents (${res.status})`);
+      }
+      return res.json();
+    },
+    3 * 60 * 1000,
+    25 * 60 * 1000
   );
-  if (!res.ok) {
-    throw new Error(`Failed to load contents (${res.status})`);
-  }
-  return res.json();
 }
 
 export async function fetchTodaySchedule(batchId: string): Promise<TodayScheduleResponse> {
-  const res = await fetch(`/api/schedule/${encodeURIComponent(batchId)}/today`);
-  if (!res.ok) {
-    throw new Error(`Failed to load today schedule (${res.status})`);
-  }
-  return res.json();
+  return clientSwrFetch(
+    `today:${batchId}`,
+    async () => {
+      const res = await fetch(`/api/schedule/${encodeURIComponent(batchId)}/today`);
+      if (!res.ok) {
+        throw new Error(`Failed to load today schedule (${res.status})`);
+      }
+      return res.json();
+    },
+    90 * 1000,
+    10 * 60 * 1000
+  );
 }
 
 export async function fetchWeeklySchedule(
@@ -391,16 +620,23 @@ export async function fetchWeeklySchedule(
   endDate: string,
   page = 1
 ): Promise<WeeklyScheduleResponse> {
-  const qs = new URLSearchParams({
-    startDate,
-    endDate,
-    page: String(page),
-  });
-  const res = await fetch(`/api/schedule/${encodeURIComponent(batchId)}/weekly?${qs.toString()}`);
-  if (!res.ok) {
-    throw new Error(`Failed to load weekly schedule (${res.status})`);
-  }
-  return res.json();
+  return clientSwrFetch(
+    `weekly:${batchId}:${startDate}:${endDate}:${page}`,
+    async () => {
+      const qs = new URLSearchParams({
+        startDate,
+        endDate,
+        page: String(page),
+      });
+      const res = await fetch(`/api/schedule/${encodeURIComponent(batchId)}/weekly?${qs.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load weekly schedule (${res.status})`);
+      }
+      return res.json();
+    },
+    3 * 60 * 1000,
+    20 * 60 * 1000
+  );
 }
 
 export function resolveAttachmentUrl(att: BatchAttachmentItem): string {
@@ -465,34 +701,100 @@ export async function resolveVideoStream(params: {
   isLive?: boolean;
   urlType?: string;
 }): Promise<ResolvedStream> {
-  const qs = new URLSearchParams({
-    batch_id: params.batchId,
-    subject_id: params.subjectId,
-    topic_id: params.topicId,
-    video_id: params.videoId,
-    video_name: params.videoName,
-    video_img: params.videoImg || '',
-    video_type: params.videoType || 'new',
-    play_type: params.playType || 'Lecture',
-  });
-  if (params.programId) qs.set('program_id', params.programId);
-  if (params.findKey) qs.set('find_key', params.findKey);
-  if (params.videoDetailsId) qs.set('video_details_id', params.videoDetailsId);
-  if (params.parentScheduleId) qs.set('parent_schedule_id', params.parentScheduleId);
-  if (params.videoUrl) qs.set('video_url', params.videoUrl);
-  if (params.typeId) qs.set('typeId', params.typeId);
-  if (params.isLive) qs.set('is_live', '1');
-  if (params.urlType) qs.set('url_type', params.urlType);
+  const fetchStream = async () => {
+    const qs = new URLSearchParams({
+      batch_id: params.batchId,
+      subject_id: params.subjectId,
+      topic_id: params.topicId,
+      video_id: params.videoId,
+      video_name: params.videoName,
+      video_img: params.videoImg || '',
+      video_type: params.videoType || 'new',
+      play_type: params.playType || 'Lecture',
+    });
+    if (params.programId) qs.set('program_id', params.programId);
+    if (params.findKey) qs.set('find_key', params.findKey);
+    if (params.videoDetailsId) qs.set('video_details_id', params.videoDetailsId);
+    if (params.parentScheduleId) qs.set('parent_schedule_id', params.parentScheduleId);
+    if (params.videoUrl) qs.set('video_url', params.videoUrl);
+    if (params.typeId) qs.set('typeId', params.typeId);
+    if (params.isLive) qs.set('is_live', '1');
+    if (params.urlType) qs.set('url_type', params.urlType);
 
-  const res = await fetch(`/api/stream?${qs.toString()}`);
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    const err: any = new Error(json.message || `Stream resolution failed (${res.status})`);
-    err.liveStreamPending = Boolean(json.liveStreamPending);
-    err.urlType = json.urlType;
-    throw err;
+    const res = await fetch(`/api/stream?${qs.toString()}`);
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      const err: any = new Error(json.message || `Stream resolution failed (${res.status})`);
+      err.liveStreamPending = Boolean(json.liveStreamPending);
+      err.urlType = json.urlType;
+      throw err;
+    }
+    return json;
+  };
+
+  if (params.isLive) {
+    return fetchStream();
   }
-  return json;
+
+  return clientSwrFetch(
+    `stream:${params.programId || ''}:${params.batchId}:${params.subjectId}:${params.videoId}`,
+    fetchStream,
+    60 * 1000,
+    90 * 1000
+  );
+}
+
+// Prefetch Helpers (Non-blocking background warming on hover/idle)
+export function prefetchBatch(batchId: string): void {
+  if (!batchId) return;
+  void fetchBatchDetails(batchId).catch(() => {});
+  void fetchTodaySchedule(batchId).catch(() => {});
+}
+
+export function prefetchSubjectTopics(batchId: string, subjectSlug: string): void {
+  if (!batchId || !subjectSlug) return;
+  void fetchSubjectTopics(batchId, subjectSlug, 1).catch(() => {});
+}
+
+export function prefetchPiHome(categoryId: string): void {
+  if (!categoryId) return;
+  void fetchPiOttHome(categoryId, 'all', '').catch(() => {});
+}
+
+export function prefetchVideoStream(params: Parameters<typeof resolveVideoStream>[0]): void {
+  if (!params?.videoId || params.isLive) return;
+  void resolveVideoStream(params).catch(() => {});
+}
+
+export function prefetchKhazanaProgram(programId: string): void {
+  if (!programId) return;
+  void fetchKhazanaOverview(programId).catch(() => {});
+}
+
+export function prefetchKhazanaTopics(programId: string, subjectId: string, chapterId: string): void {
+  if (!programId || !subjectId || !chapterId) return;
+  void fetchKhazanaTopics(programId, subjectId, chapterId, 1, 20).catch(() => {});
+}
+
+export function prefetchKhazanaTopicFirstContents(
+  programId: string,
+  subjectId: string,
+  chapterId: string,
+  topicId: string
+): void {
+  if (!programId || !subjectId || !chapterId || !topicId) return;
+  void fetchKhazanaSubTopics(programId, subjectId, chapterId, topicId)
+    .then((res) => {
+      const list = [...(res.subTopics || [])].sort(
+        (a, b) => (a.displayOrder ?? 99) - (b.displayOrder ?? 99)
+      );
+      if (list[0]?._id) {
+        void fetchKhazanaContents(programId, subjectId, chapterId, topicId, list[0]._id, 1, 20).catch(
+          () => {}
+        );
+      }
+    })
+    .catch(() => {});
 }
 
 export async function fetchAppControls(): Promise<AppControls> {
@@ -532,6 +834,7 @@ export interface PwBatchQuizItem {
   maxDuration: number;
   startTime: string;
   status: string;
+  isDha?: boolean;
 }
 
 export interface PwBatchQuizzesResponse {
@@ -542,6 +845,8 @@ export interface PwBatchQuizzesResponse {
   activeSubjectSlug?: string;
   topics: Array<{ _id: string; name: string; exercises: number; notes: number; videos: number }>;
   quizzes: PwBatchQuizItem[];
+  officialTests?: OfficialBatchTest[];
+  testCats?: string[];
 }
 
 export async function fetchPwBatchQuizzes(
@@ -549,16 +854,107 @@ export async function fetchPwBatchQuizzes(
   subjectSlug?: string,
   topicId?: string
 ): Promise<PwBatchQuizzesResponse> {
-  const qs = new URLSearchParams();
-  if (subjectSlug) qs.set('subjectSlug', subjectSlug);
-  if (topicId) qs.set('topicId', topicId);
-  const query = qs.toString() ? `?${qs.toString()}` : '';
-  const res = await fetch(`/api/pw/batch-quizzes/${encodeURIComponent(batchId)}${query}`);
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.message || 'Failed to load PW batch quizzes');
-  }
-  return json;
+  return clientSwrFetch(
+    `pw-quizzes:${batchId}:${subjectSlug || ''}:${topicId || ''}`,
+    async () => {
+      const qs = new URLSearchParams();
+      if (subjectSlug) qs.set('subjectSlug', subjectSlug);
+      if (topicId) qs.set('topicId', topicId);
+      const query = qs.toString() ? `?${qs.toString()}` : '';
+      const res = await fetch(`/api/pw/batch-quizzes/${encodeURIComponent(batchId)}${query}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load PW batch tests');
+      }
+      return json;
+    },
+    4 * 60 * 1000,
+    30 * 60 * 1000
+  );
+}
+
+export async function fetchPiOttCategories(): Promise<PiCategory[]> {
+  return clientSwrFetch(
+    'pi:categories',
+    async () => {
+      const res = await fetch('/api/pi-ott/categories');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load Pi OTT categories');
+      }
+      return json.categories || [];
+    },
+    30 * 60 * 1000,
+    24 * 60 * 60 * 1000
+  );
+}
+
+export async function fetchPiOttHome(
+  categoryId: string,
+  subId = 'all',
+  q = ''
+): Promise<PiHomeResponse> {
+  return clientSwrFetch(
+    `pi:home:${categoryId}:${subId}:${q.trim().toLowerCase()}`,
+    async () => {
+      const qs = new URLSearchParams({ categoryId, subId });
+      if (q.trim()) qs.set('q', q.trim());
+      const res = await fetch(`/api/pi-ott/home?${qs.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load Pi OTT feed');
+      }
+      return json;
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
+  );
+}
+
+export async function fetchPiOttTeacherProfile(
+  teacherId: string,
+  programId: string
+): Promise<PiTeacherProfileResponse> {
+  return clientSwrFetch(
+    `pi:teacher:${programId}:${teacherId}`,
+    async () => {
+      const qs = new URLSearchParams({ programId });
+      const res = await fetch(`/api/pi-ott/teacher/${encodeURIComponent(teacherId)}?${qs.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load teacher profile');
+      }
+      return json;
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
+  );
+}
+
+export async function fetchPiOttSeriesDetail(params: {
+  seriesId: string;
+  type: 'khazana' | 'batch';
+  programId?: string;
+  subjectId?: string;
+  topicId?: string;
+}): Promise<PiSeriesDetailResponse> {
+  return clientSwrFetch(
+    `pi:series:${params.type}:${params.seriesId}:${params.programId || ''}:${params.subjectId || ''}:${params.topicId || ''}`,
+    async () => {
+      const qs = new URLSearchParams({ type: params.type });
+      if (params.programId) qs.set('programId', params.programId);
+      if (params.subjectId) qs.set('subjectId', params.subjectId);
+      if (params.topicId) qs.set('topicId', params.topicId);
+      const res = await fetch(`/api/pi-ott/series/${encodeURIComponent(params.seriesId)}?${qs.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load series episodes');
+      }
+      return json;
+    },
+    5 * 60 * 1000,
+    30 * 60 * 1000
+  );
 }
 
 export async function startPwQuiz(params: {
@@ -620,12 +1016,19 @@ export async function fetchPwCommunityFeed(batchIds?: string[]): Promise<{
     batchIds && batchIds.length > 0
       ? `?batchIds=${encodeURIComponent(batchIds.slice(0, 5).join(','))}`
       : '';
-  const res = await fetch(`/api/pw/community${qs}`);
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.message || 'Failed to load PW Community feed');
-  }
-  return json;
+  return clientSwrFetch(
+    `pw-comm:${qs}`,
+    async () => {
+      const res = await fetch(`/api/pw/community${qs}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to load PW Community feed');
+      }
+      return json;
+    },
+    3 * 60 * 1000,
+    20 * 60 * 1000
+  );
 }
 
 export async function askPwPi(params: {

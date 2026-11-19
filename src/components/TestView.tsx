@@ -14,9 +14,14 @@ import {
   AlertCircle,
   Trophy,
   BookOpen,
+  Award,
+  Eye,
+  Download,
 } from 'lucide-react';
-import { BatchItem } from '../types';
+import { BatchItem, OfficialBatchTest } from '../types';
 import {
+  buildPdfProxyUrl,
+  downloadPdfFile,
   fetchPwBatchQuizzes,
   PwBatchQuizItem,
   startPwQuiz,
@@ -287,6 +292,8 @@ export const TestView: React.FC<TestViewProps> = ({
   const [pwTopics, setPwTopics] = useState<Array<{ _id: string; name: string; exercises: number }>>([]);
   const [selectedPwTopicId, setSelectedPwTopicId] = useState<string>('');
   const [pwQuizzes, setPwQuizzes] = useState<PwBatchQuizItem[]>([]);
+  const [officialTests, setOfficialTests] = useState<OfficialBatchTest[]>([]);
+  const [pwTestSubTab, setPwTestSubTab] = useState<'official' | 'quizzes'>('official');
   const [loadingPwQuizzes, setLoadingPwQuizzes] = useState(false);
   const [pwQuizError, setPwQuizError] = useState<string | null>(null);
   const [launchingQuizId, setLaunchingQuizId] = useState<string | null>(null);
@@ -348,9 +355,10 @@ export const TestView: React.FC<TestViewProps> = ({
         }
         setPwTopics(res.topics || []);
         setPwQuizzes(res.quizzes || []);
+        setOfficialTests(res.officialTests || []);
       })
       .catch((err: any) => {
-        if (!cancelled) setPwQuizError(err?.message || 'Unable to load PW Batch quizzes');
+        if (!cancelled) setPwQuizError(err?.message || 'Unable to load PW Batch tests');
       })
       .finally(() => {
         if (!cancelled) setLoadingPwQuizzes(false);
@@ -383,6 +391,34 @@ export const TestView: React.FC<TestViewProps> = ({
       });
     } catch (err: any) {
       setPwQuizError(err?.message || 'Failed to launch PW Quiz.');
+    } finally {
+      setLaunchingQuizId(null);
+    }
+  };
+
+  const handleLaunchOfficialTest = async (test: OfficialBatchTest) => {
+    if (launchingQuizId) return;
+    setLaunchingQuizId(test.id);
+    setPwQuizError(null);
+    try {
+      const res = await startPwQuiz({
+        exerciseId: test.exerciseId || undefined,
+        batchName: test.batchName,
+        subjectName: test.subjectName,
+        topicName: test.syllabus || test.title,
+        title: test.title,
+        count: Math.min(12, Math.max(8, test.totalQuestions || 10)),
+      });
+      startPack({
+        id: `official-${test.id}-${Date.now()}`,
+        title: test.title,
+        subject: test.subjectName,
+        exam: test.batchName,
+        durationMinutes: Math.max(15, test.maxDuration || res.questions.length * 2),
+        questions: res.questions,
+      });
+    } catch (err: any) {
+      setPwQuizError(err?.message || 'Failed to start Official Test.');
     } finally {
       setLaunchingQuizId(null);
     }
@@ -839,6 +875,33 @@ export const TestView: React.FC<TestViewProps> = ({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPwTestSubTab('official')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition ${
+              pwTestSubTab === 'official'
+                ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <Award className="h-3.5 w-3.5" />
+            <span>Official Batch Tests ({officialTests.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPwTestSubTab('quizzes')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition ${
+              pwTestSubTab === 'quizzes'
+                ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            <span>DPP &amp; DHA Quizzes ({pwQuizzes.length})</span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <select
             value={selectedPwBatchId}
@@ -901,15 +964,93 @@ export const TestView: React.FC<TestViewProps> = ({
         {loadingPwQuizzes ? (
           <div className="flex items-center justify-center py-8 gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
-            <span>Loading live PW batch quizzes via proxy...</span>
+            <span>Loading official PW batch tests &amp; quizzes...</span>
           </div>
+        ) : pwTestSubTab === 'official' ? (
+          officialTests.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--card-border)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
+              No official tests found for this batch yet. Switch to DPP &amp; DHA Quizzes or another batch above.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {officialTests.map((t) => {
+                const isLaunching = launchingQuizId === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 hover:border-[var(--primary-color)]/60 transition"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold">
+                        <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
+                          {t.category}
+                        </span>
+                        <span className="font-mono text-[var(--text-secondary)]">
+                          {t.totalQuestions} Qs · {t.totalMarks}M
+                        </span>
+                      </div>
+                      <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] leading-snug line-clamp-2">
+                        {t.title}
+                      </h3>
+                      <p className="text-xs font-semibold text-[var(--primary-color)] truncate">
+                        {t.subjectName}
+                      </p>
+                      {t.syllabus && (
+                        <p className="text-xs text-[var(--text-secondary)] line-clamp-2">
+                          {t.syllabus}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-2.5">
+                      {t.pdfUrl ? (
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={buildPdfProxyUrl(t.pdfUrl, t.pdfName || 'Test Syllabus.pdf', false)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)]"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>Syllabus</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => downloadPdfFile(t.pdfUrl!, t.pdfName || 'Test Syllabus.pdf')}
+                            className="rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] p-1 text-[var(--text-primary)]"
+                            title="Download Syllabus"
+                          >
+                            <Download className="h-3.5 w-3.5 text-pink-400" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-secondary)] truncate">
+                          {t.maxDuration} min · +4/-1
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={Boolean(launchingQuizId)}
+                        onClick={() => handleLaunchOfficialTest(t)}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition whitespace-nowrap"
+                      >
+                        {isLaunching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-white" />}
+                        <span>{isLaunching ? 'Starting...' : 'Attempt Official'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : pwQuizzes.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--card-border)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
-            No DPP quiz sets found in this subject yet. Try selecting another subject or batch above.
+            No DPP / DHA quiz sets found in this subject yet. Try selecting another subject or Official Batch Tests above.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pwQuizzes.slice(0, 9).map((quiz) => {
+            {pwQuizzes.slice(0, 12).map((quiz) => {
               const isLaunching = launchingQuizId === quiz.id;
               return (
                 <div
@@ -919,6 +1060,11 @@ export const TestView: React.FC<TestViewProps> = ({
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)]">
                       <span className="font-bold text-[var(--primary-color)]">{quiz.subjectName}</span>
+                      {quiz.isDha && (
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">
+                          DHA
+                        </span>
+                      )}
                       <span aria-hidden="true">·</span>
                       <span className="font-mono tabular-nums">{quiz.totalQuestions} Qs</span>
                       <span aria-hidden="true">·</span>
@@ -949,7 +1095,7 @@ export const TestView: React.FC<TestViewProps> = ({
                       ) : (
                         <Play className="h-3.5 w-3.5 fill-white" />
                       )}
-                      <span>{isLaunching ? 'Loading CBT...' : 'Attempt PW Quiz'}</span>
+                      <span>{isLaunching ? 'Loading CBT...' : 'Attempt Quiz'}</span>
                     </button>
                   </div>
                 </div>

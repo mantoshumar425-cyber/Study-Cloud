@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ArrowLeft,
   Calendar,
@@ -35,16 +35,21 @@ import {
   buildPdfProxyUrl,
   downloadPdfFile,
   fetchKhazanaContents,
-  fetchKhazanaFilters,
+  fetchKhazanaOverview,
   fetchKhazanaPrograms,
   fetchKhazanaSubjectChapters,
   fetchKhazanaSubTopics,
   fetchKhazanaTeacherChapters,
   fetchKhazanaTeachers,
   fetchKhazanaTopics,
+  prefetchKhazanaProgram,
+  prefetchKhazanaTopicFirstContents,
+  prefetchKhazanaTopics,
+  prefetchVideoStream,
   resolveAttachmentUrl,
 } from '../services/batchService';
 import { isLectureCompleted } from '../services/adventureService';
+import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 import type { PlayLecturePayload } from './BatchDetailsModal';
 import { SubjectIconBadge } from './SubjectIconBadge';
 
@@ -182,15 +187,48 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
   const [downloadedPdfKey, setDownloadedPdfKey] = useState<string | null>(null);
   const [pdfDownloadError, setPdfDownloadError] = useState<string | null>(null);
 
-  // Load curated Khazana programs list in standalone mode
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const schedulePrefetch = useCallback((fn: () => void) => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      fn();
+    }, 95);
+  }, []);
+
+  const cancelPrefetch = useCallback(() => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Load curated Khazana programs list in standalone mode + idle-warm top 3 programs
   useEffect(() => {
     if (isEmbedded) return;
     let cancelled = false;
+    let idleTimer: number | null = null;
     setLoadingPrograms(true);
     setProgramsError(null);
     fetchKhazanaPrograms()
       .then((list) => {
-        if (!cancelled) setPrograms(list);
+        if (cancelled) return;
+        setPrograms(list);
+        idleTimer = window.setTimeout(() => {
+          if (cancelled) return;
+          list.slice(0, 3).forEach((prog) => prefetchKhazanaProgram(prog.programId));
+        }, 250);
       })
       .catch((err) => {
         if (!cancelled) setProgramsError(err?.message || 'Could not load Khazana programs.');
@@ -200,6 +238,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       });
     return () => {
       cancelled = true;
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
     };
   }, [isEmbedded]);
 
@@ -230,7 +269,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
     setSelectedTopic(null);
   }, [initialProgramId, initialBatchId, initialBatchName]);
 
-  // Load active program overview (filters + subject previews + page 1 of teachers)
+  // Load active program overview via single batched & pre-warmed endpoint
   useEffect(() => {
     if (!activeProgram?.programId) return;
     let cancelled = false;
@@ -245,43 +284,43 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
     setHasMoreTeachers(false);
     setTeacherSearch('');
 
-    Promise.all([
-      fetchKhazanaFilters(progId),
-      fetchKhazanaTeachers(progId, 1).catch(() => ({ teachers: [], paginate: null })),
-    ])
-      .then(async ([filtersRes, teachersRes]) => {
+    fetchKhazanaOverview(progId)
+      .then((overview) => {
         if (cancelled) return;
-        const subjList = filtersRes.subjects || [];
+        const subjList = overview.subjects || [];
+        const initialPreviews = overview.subjectPreviews || {};
         setSubjects(subjList);
-        if (filtersRes.name) {
-          setProgramDisplayName(filtersRes.name);
-        } else {
-          setProgramDisplayName(activeProgram.title);
-        }
+        setProgramDisplayName(overview.name || activeProgram.title);
 
-        const tList = teachersRes.teachers || [];
+        const tList = overview.teachers || [];
         setTeachers(tList);
-        const totalTeachers = Number(teachersRes.paginate?.totalCount || 0);
+        const totalTeachers = Number(overview.paginate?.totalCount || 0);
         setHasMoreTeachers(totalTeachers > tList.length || tList.length >= 20);
+        setSubjectPreviews(initialPreviews);
 
-        // Preload top preview courses for first 6 subjects cleanly in parallel
-        const previewTargets = subjList.slice(0, 6);
-        const results = await Promise.allSettled(
-          previewTargets.map((subj) =>
-            fetchKhazanaSubjectChapters(progId, subj._id, 1, 8).then((res) => ({
-              subjectId: subj._id,
-              chapters: res.chapters || [],
-            }))
-          )
-        );
-        if (cancelled) return;
-        const previewMap: Record<string, KhazanaChapter[]> = {};
-        for (const r of results) {
-          if (r.status === 'fulfilled') {
-            previewMap[r.value.subjectId] = r.value.chapters;
-          }
+        // Silently load extra subject previews beyond the pre-warmed first 4 without blocking UI
+        const remainingTargets = subjList.slice(0, 7).filter((s) => !initialPreviews[s._id]);
+        if (remainingTargets.length > 0) {
+          void Promise.allSettled(
+            remainingTargets.map((subj) =>
+              fetchKhazanaSubjectChapters(progId, subj._id, 1, 8).then((res) => ({
+                subjectId: subj._id,
+                chapters: res.chapters || [],
+              }))
+            )
+          ).then((results) => {
+            if (cancelled) return;
+            const extra: Record<string, KhazanaChapter[]> = {};
+            for (const r of results) {
+              if (r.status === 'fulfilled') {
+                extra[r.value.subjectId] = r.value.chapters;
+              }
+            }
+            if (Object.keys(extra).length > 0) {
+              setSubjectPreviews((prev) => ({ ...prev, ...extra }));
+            }
+          });
         }
-        setSubjectPreviews(previewMap);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -567,6 +606,18 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       setSubTopics(list);
       if (list.length > 0) {
         setActiveSubTopic(list[0]);
+        if (list.length > 1) {
+          // Warm Notes/DPPs sub-tab silently while Lectures render
+          void fetchKhazanaContents(
+            activeProgram.programId,
+            subjectId,
+            chapterId,
+            topic._id,
+            list[1]._id,
+            1,
+            20
+          ).catch(() => {});
+        }
         await loadSubTopicContents(topic, list[0], 1, false);
       }
     } catch (err: any) {
@@ -768,6 +819,9 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
               <div
                 key={prog.programId}
                 onClick={() => handleSelectProgram(prog)}
+                onMouseEnter={() => schedulePrefetch(() => prefetchKhazanaProgram(prog.programId))}
+                onMouseLeave={cancelPrefetch}
+                onTouchStart={() => prefetchKhazanaProgram(prog.programId)}
                 className="group cursor-pointer flex flex-col overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary-color)]/60 hover:shadow-xl"
               >
                 <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
@@ -777,6 +831,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                       alt={prog.title}
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                       loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-900/60 via-indigo-950 to-slate-900">
@@ -960,6 +1015,18 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                       <button
                         key={subj._id}
                         onClick={() => handleOpenSubjectChapters(subj)}
+                        onMouseEnter={() =>
+                          activeProgram &&
+                          schedulePrefetch(() => {
+                            void fetchKhazanaSubjectChapters(
+                              activeProgram.programId,
+                              subj._id,
+                              1,
+                              16
+                            ).catch(() => {});
+                          })
+                        }
+                        onMouseLeave={cancelPrefetch}
                         disabled={loadingSubjectId === subj._id}
                         className="flex shrink-0 items-center gap-2.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] transition"
                       >
@@ -995,10 +1062,19 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                     <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
                       {list.map((chap) => {
                         const thumb = resolveChapterImage(chap);
+                        const chapSubjId = resolveChapterSubjectId(chap, subj._id);
                         return (
                           <button
                             key={chap._id}
                             onClick={() => handleOpenChapterTopics(chap, subj)}
+                            onMouseEnter={() =>
+                              activeProgram &&
+                              chapSubjId &&
+                              schedulePrefetch(() =>
+                                prefetchKhazanaTopics(activeProgram.programId, chapSubjId, chap._id)
+                              )
+                            }
+                            onMouseLeave={cancelPrefetch}
                             className="group flex w-64 sm:w-72 shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-lg"
                           >
                             <div className="relative h-32 w-full overflow-hidden bg-slate-900">
@@ -1008,6 +1084,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                                   alt={chap.name}
                                   className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-105"
                                   loading="lazy"
+                                  decoding="async"
                                 />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-900 to-slate-900">
@@ -1083,6 +1160,18 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                         <button
                           key={teacher._id}
                           onClick={() => handleOpenTeacherChapters(teacher)}
+                          onMouseEnter={() =>
+                            activeProgram &&
+                            schedulePrefetch(() => {
+                              void fetchKhazanaTeacherChapters(
+                                activeProgram.programId,
+                                teacher._id,
+                                1,
+                                20
+                              ).catch(() => {});
+                            })
+                          }
+                          onMouseLeave={cancelPrefetch}
                           className="group flex items-center gap-3.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
                         >
                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-indigo-500/15 border border-[var(--card-border)] flex items-center justify-center">
@@ -1092,6 +1181,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                                 alt={teacher.name}
                                 className="h-full w-full object-cover object-top"
                                 loading="lazy"
+                                decoding="async"
                               />
                             ) : (
                               <span className="font-['Sora'] text-base font-extrabold text-indigo-400">
@@ -1179,10 +1269,22 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                     chap,
                     selectedSubject?.name || chap.courseType?.name || 'Khazana'
                   );
+                  const chapSubjId = resolveChapterSubjectId(
+                    chap,
+                    selectedSubject?._id || subjects[0]?._id || ''
+                  );
                   return (
                     <button
                       key={chap._id}
                       onClick={() => handleOpenChapterTopics(chap)}
+                      onMouseEnter={() =>
+                        activeProgram &&
+                        chapSubjId &&
+                        schedulePrefetch(() =>
+                          prefetchKhazanaTopics(activeProgram.programId, chapSubjId, chap._id)
+                        )
+                      }
+                      onMouseLeave={cancelPrefetch}
                       className="group flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-lg"
                     >
                       <div className="relative h-36 w-full overflow-hidden bg-slate-900">
@@ -1192,6 +1294,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                             alt={chap.name}
                             className="h-full w-full object-cover object-top transition duration-300 group-hover:scale-105"
                             loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-900 to-slate-900">
@@ -1297,12 +1400,30 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                {topics.map((topic, idx) => (
-                  <button
-                    key={topic._id}
-                    onClick={() => handleOpenTopic(topic)}
-                    className="group flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 text-left transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
-                  >
+                {topics.map((topic, idx) => {
+                  const topicSubjId =
+                    topic.subjectId ||
+                    resolveChapterSubjectId(selectedChapter, selectedSubject?._id || '');
+                  const topicChapId = topic.chapterId || selectedChapter._id;
+                  return (
+                    <button
+                      key={topic._id}
+                      onClick={() => handleOpenTopic(topic)}
+                      onMouseEnter={() =>
+                        activeProgram &&
+                        topicSubjId &&
+                        schedulePrefetch(() =>
+                          prefetchKhazanaTopicFirstContents(
+                            activeProgram.programId,
+                            topicSubjId,
+                            topicChapId,
+                            topic._id
+                          )
+                        )
+                      }
+                      onMouseLeave={cancelPrefetch}
+                      className="group flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 text-left transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
+                    >
                     <div className="flex items-start gap-3.5 min-w-0">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 font-mono tabular-nums text-xs sm:text-sm font-extrabold text-amber-400">
                         {String(idx + 1).padStart(2, '0')}
@@ -1318,7 +1439,8 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                     </div>
                     <ChevronRight className="h-5 w-5 shrink-0 text-[var(--text-secondary)] group-hover:translate-x-0.5 group-hover:text-[var(--primary-color)] transition" />
                   </button>
-                ))}
+                  );
+                })}
               </div>
 
               {hasMoreTopics && (
@@ -1414,16 +1536,49 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                       resolveChapterSubjectId(selectedChapter, selectedSubject?._id || 'khazana');
                     const isCleared = isLectureCompleted(effectiveBatchId, d._id, adventureState);
 
+                    const vd = d.videoDetails;
+                    const rawUrl = vd?.embedCode || vd?.videoUrl || d.videoUrl || '';
+                    const isYt = (d.videoType || '').toLowerCase() === 'youtube';
+                    const subLabel = (activeSubTopic?.name || '').toLowerCase();
+                    const isDpp = subLabel.includes('dpp') || subLabel.includes('sol');
+
                     return (
                       <div
                         key={d._id}
                         onClick={() => handlePlayKhazanaLecture(entry)}
+                        onMouseEnter={() =>
+                          activeProgram &&
+                          schedulePrefetch(() =>
+                            prefetchVideoStream({
+                              batchId: effectiveBatchId,
+                              programId: activeProgram.programId,
+                              subjectId: subjectIdForState,
+                              topicId: selectedTopic._id,
+                              videoId: d._id,
+                              findKey: vd?.findKey,
+                              videoDetailsId: vd?._id || vd?.id,
+                              typeId: vd?._id || vd?.id,
+                              videoName: title,
+                              videoImg: vd?.image || '',
+                              videoType: isYt ? 'youtube' : 'khazana',
+                              playType: isDpp ? 'solutions' : 'Lecture',
+                              videoUrl: rawUrl,
+                            })
+                          )
+                        }
+                        onMouseLeave={cancelPrefetch}
                         className="group flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 cursor-pointer transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0 flex-1">
                           <div className="relative aspect-video w-full sm:h-24 sm:w-44 md:h-28 md:w-48 shrink-0 overflow-hidden rounded-2xl bg-slate-900">
                             {thumb ? (
-                              <img src={thumb} alt={title} className="h-full w-full object-cover" />
+                              <img
+                                src={thumb}
+                                alt={title}
+                                loading="lazy"
+                                decoding="async"
+                                className="h-full w-full object-cover"
+                              />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center bg-indigo-950">
                                 <Video className="h-8 w-8 text-indigo-400" />
@@ -1476,7 +1631,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1489,14 +1644,42 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                                 title,
                               });
                             }}
-                            className={`flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
+                            className={`flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
                               isCleared
                                 ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
                                 : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                             }`}
                           >
                             <CheckCircle2 className="h-4 w-4" />
-                            <span>{isCleared ? 'Cleared' : 'Complete'}</span>
+                            <span className="hidden sm:inline">{isCleared ? 'Cleared' : 'Complete'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!activeProgram) return;
+                              openLectureDownloadModal({
+                                batchId: effectiveBatchId,
+                                programId: activeProgram.programId,
+                                subjectId: subjectIdForState,
+                                topicId: selectedTopic._id,
+                                videoId: d._id,
+                                findKey: vd?.findKey,
+                                videoDetailsId: vd?._id || vd?.id,
+                                typeId: vd?._id || vd?.id,
+                                title,
+                                videoImg: vd?.image || '',
+                                videoType: isYt ? 'youtube' : 'khazana',
+                                playType: isDpp ? 'solutions' : 'Lecture',
+                                rawVideoUrl: rawUrl,
+                              });
+                            }}
+                            className="flex h-10 w-10 sm:w-auto sm:px-3.5 items-center justify-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-xs font-bold text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 transition"
+                            title="Download Lecture (MP4 / Audio)"
+                          >
+                            <Download className="h-4 w-4" />
+                            <span className="hidden lg:inline">Download</span>
                           </button>
 
                           <button

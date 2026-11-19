@@ -14,9 +14,14 @@ import {
   AlertCircle,
   Trophy,
   RefreshCw,
+  Download,
+  Eye,
+  Award,
 } from 'lucide-react';
-import { BatchItem, BatchSubject } from '../types';
+import { BatchItem, BatchSubject, OfficialBatchTest } from '../types';
 import {
+  buildPdfProxyUrl,
+  downloadPdfFile,
   fetchPwBatchQuizzes,
   PwBatchQuizItem,
   startPwQuiz,
@@ -66,6 +71,8 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
   const [pwTopics, setPwTopics] = useState<Array<{ _id: string; name: string; exercises: number }>>([]);
   const [selectedTopicId, setSelectedTopicId] = useState<string>('');
   const [quizzes, setQuizzes] = useState<PwBatchQuizItem[]>([]);
+  const [officialTests, setOfficialTests] = useState<OfficialBatchTest[]>([]);
+  const [testSubTab, setTestSubTab] = useState<'official' | 'quizzes'>('official');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
@@ -97,7 +104,7 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
     setCustomSubject(academicSubjects[0]?.subject || 'Physics');
   }, [batch.batch_id]);
 
-  // Fetch PW quizzes for this batch
+  // Fetch PW official tests + quizzes for this batch
   const loadQuizzes = async (subjSlug?: string, topicId?: string) => {
     setLoading(true);
     setError(null);
@@ -109,6 +116,7 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
       }
       setPwTopics(res.topics || []);
       setQuizzes(res.quizzes || []);
+      setOfficialTests(res.officialTests || []);
     } catch (err: any) {
       setError(err?.message || 'Could not load tests for this batch.');
     } finally {
@@ -216,6 +224,34 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
       });
     } catch (err: any) {
       setError(err?.message || 'Failed to launch this batch quiz.');
+    } finally {
+      setLaunchingId(null);
+    }
+  };
+
+  const handleLaunchOfficialTest = async (test: OfficialBatchTest) => {
+    if (launchingId) return;
+    setLaunchingId(test.id);
+    setError(null);
+    try {
+      const res = await startPwQuiz({
+        exerciseId: test.exerciseId || undefined,
+        batchName: batch.name,
+        subjectName: test.subjectName,
+        topicName: test.syllabus || test.title,
+        title: test.title,
+        count: Math.min(12, Math.max(8, test.totalQuestions || 10)),
+      });
+      startPack({
+        id: `batch-official-${test.id}-${Date.now()}`,
+        title: test.title,
+        subject: test.subjectName,
+        exam: batch.exam || batch.name,
+        durationMinutes: Math.max(15, test.maxDuration || res.questions.length * 2),
+        questions: res.questions,
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Failed to launch official test.');
     } finally {
       setLaunchingId(null);
     }
@@ -594,8 +630,36 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
           </button>
         </div>
 
-        {/* Subject & Chapter Filters */}
-        {(pwSubjects.length > 0 || academicSubjects.length > 0) && (
+        {/* Official Tests vs Chapter DHA/DPP Quizzes Switcher */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--card-border)] pt-3">
+          <button
+            type="button"
+            onClick={() => setTestSubTab('official')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition ${
+              testSubTab === 'official'
+                ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <Award className="h-3.5 w-3.5" />
+            <span>Official Batch Tests ({officialTests.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTestSubTab('quizzes')}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition ${
+              testSubTab === 'quizzes'
+                ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
+            }`}
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            <span>Chapter DPP &amp; DHA Quizzes ({quizzes.length})</span>
+          </button>
+        </div>
+
+        {/* Subject & Chapter Filters (shown when browsing quizzes) */}
+        {testSubTab === 'quizzes' && (pwSubjects.length > 0 || academicSubjects.length > 0) && (
           <div className="flex flex-col sm:flex-row gap-2.5">
             <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               {(pwSubjects.length > 0 ? pwSubjects : academicSubjects).map((subj) => {
@@ -650,11 +714,90 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
       {loading ? (
         <div className="flex items-center justify-center py-10 gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
           <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
-          <span>Loading quizzes for {batch.name}...</span>
+          <span>Loading official tests &amp; quizzes for {batch.name}...</span>
         </div>
+      ) : testSubTab === 'official' ? (
+        officialTests.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
+            No official test updates found yet. Switch to Chapter DPP &amp; DHA Quizzes or build a mock test below!
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {officialTests.map((t) => {
+              const isLaunching = launchingId === t.id;
+              return (
+                <div
+                  key={t.id}
+                  className="flex flex-col justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 hover:border-[var(--primary-color)]/60 transition"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] font-bold">
+                      <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
+                        {t.category}
+                      </span>
+                      <span className="font-mono text-[var(--text-secondary)]">
+                        {t.totalQuestions} Qs · {t.totalMarks} Marks · {t.maxDuration}m
+                      </span>
+                    </div>
+                    <h4 className="font-['Sora'] text-sm font-extrabold text-[var(--text-primary)] line-clamp-2">
+                      {t.title}
+                    </h4>
+                    <p className="text-xs font-semibold text-[var(--primary-color)] truncate">
+                      {t.subjectName}
+                    </p>
+                    {t.syllabus && (
+                      <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
+                        {t.syllabus}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-2.5">
+                    {t.pdfUrl ? (
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          href={buildPdfProxyUrl(t.pdfUrl, t.pdfName || 'Test Syllabus.pdf', false)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--text-primary)]"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-indigo-400" />
+                          <span>Syllabus</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => downloadPdfFile(t.pdfUrl!, t.pdfName || 'Test Syllabus.pdf')}
+                          className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2 py-1.5 text-[11px] font-bold text-[var(--text-primary)]"
+                          title="Download Syllabus PDF"
+                        >
+                          <Download className="h-3.5 w-3.5 text-pink-400" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
+                        <Trophy className="h-3.5 w-3.5 text-amber-400" />
+                        Official Pattern CBT
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={Boolean(launchingId)}
+                      onClick={() => handleLaunchOfficialTest(t)}
+                      className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition"
+                    >
+                      {isLaunching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-white" />}
+                      <span>{isLaunching ? 'Starting...' : 'Attempt Official'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : quizzes.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
-          No pre-uploaded DPP quiz found for this subject yet. Switch subject above or generate a custom mock test for this batch below!
+          No pre-uploaded DPP / DHA quiz found for this subject yet. Switch subject above or try Official Batch Tests!
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -668,6 +811,11 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[var(--text-secondary)]">
                     <span className="font-bold text-[var(--primary-color)]">{quiz.subjectName}</span>
+                    {quiz.isDha && (
+                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">
+                        DHA
+                      </span>
+                    )}
                     <span aria-hidden="true">·</span>
                     <span className="font-mono tabular-nums">{quiz.totalQuestions} Qs</span>
                     <span aria-hidden="true">·</span>

@@ -1,0 +1,328 @@
+import { useEffect, useState } from 'react';
+import { ResolvedStream } from '../types';
+import { resolveVideoStream } from './batchService';
+
+export interface LectureDownloadTarget {
+  batchId: string;
+  programId?: string;
+  subjectId: string;
+  topicId: string;
+  videoId: string;
+  findKey?: string;
+  videoDetailsId?: string;
+  parentScheduleId?: string;
+  typeId?: string;
+  title: string;
+  videoImg?: string;
+  videoType?: string;
+  playType?: string;
+  rawVideoUrl?: string;
+  isLive?: boolean;
+  urlType?: string;
+  resolvedStream?: ResolvedStream | null;
+}
+
+export interface LectureDownloadOption {
+  id: string;
+  label: string;
+  subLabel: string;
+  qualityTag: string;
+  format: 'mp4' | 'm4a';
+  url: string;
+  estimatedMb?: number;
+  isDirectMp4?: boolean;
+}
+
+export interface LectureDownloadJobState {
+  id: string;
+  title: string;
+  qualityLabel: string;
+  format: 'mp4' | 'm4a';
+  fileName: string;
+  status: 'preparing' | 'downloading' | 'finalizing' | 'ready' | 'error' | 'cancelled';
+  percent: number;
+  downloadedBytes: number;
+  totalDurationSecs: number;
+  processedSecs: number;
+  error?: string | null;
+  autoSaved?: boolean;
+}
+
+interface ManagerState {
+  target: LectureDownloadTarget | null;
+  inspecting: boolean;
+  inspectError: string | null;
+  isYoutubeNotice: boolean;
+  youtubeUrl?: string;
+  durationSecs: number;
+  options: LectureDownloadOption[];
+  jobs: LectureDownloadJobState[];
+  queueOpen: boolean;
+}
+
+let state: ManagerState = {
+  target: null,
+  inspecting: false,
+  inspectError: null,
+  isYoutubeNotice: false,
+  youtubeUrl: undefined,
+  durationSecs: 0,
+  options: [],
+  jobs: [],
+  queueOpen: false,
+};
+
+const listeners = new Set<() => void>();
+const pollTimers = new Map<string, number>();
+
+function emit() {
+  for (const fn of listeners) fn();
+}
+
+function setState(patch: Partial<ManagerState>) {
+  state = { ...state, ...patch };
+  emit();
+}
+
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+  return `${mb.toFixed(1)} MB`;
+}
+
+export function triggerBrowserFileSave(jobId: string, fileName: string): void {
+  const a = document.createElement('a');
+  a.href = `/api/lecture-download/file/${encodeURIComponent(jobId)}`;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function startPollingJob(jobId: string) {
+  if (pollTimers.has(jobId)) return;
+
+  const poll = async () => {
+    try {
+      const res = await fetch(`/api/lecture-download/status/${encodeURIComponent(jobId)}`);
+      if (!res.ok) {
+        stopPollingJob(jobId);
+        return;
+      }
+      const data = await res.json();
+      let shouldAutoSave = false;
+      const updated = state.jobs.map((j) => {
+        if (j.id !== jobId) return j;
+        const becameReady = data.status === 'ready' && !j.autoSaved;
+        if (becameReady) shouldAutoSave = true;
+        return {
+          ...j,
+          status: data.status,
+          percent: Number(data.percent ?? j.percent),
+          downloadedBytes: Number(data.downloadedBytes ?? j.downloadedBytes),
+          totalDurationSecs: Number(data.totalDurationSecs ?? j.totalDurationSecs),
+          processedSecs: Number(data.processedSecs ?? j.processedSecs),
+          error: data.error || null,
+          autoSaved: j.autoSaved || becameReady,
+        };
+      });
+      setState({ jobs: updated });
+
+      if (shouldAutoSave) {
+        triggerBrowserFileSave(jobId, data.fileName || 'lecture.mp4');
+      }
+
+      if (data.status === 'ready' || data.status === 'error' || data.status === 'cancelled') {
+        stopPollingJob(jobId);
+        return;
+      }
+    } catch {
+      // keep trying silently on transient network hiccup
+    }
+    const t = window.setTimeout(poll, 450);
+    pollTimers.set(jobId, t);
+  };
+
+  const t = window.setTimeout(poll, 350);
+  pollTimers.set(jobId, t);
+}
+
+function stopPollingJob(jobId: string) {
+  const t = pollTimers.get(jobId);
+  if (t !== undefined) {
+    window.clearTimeout(t);
+    pollTimers.delete(jobId);
+  }
+}
+
+export async function openLectureDownloadModal(target: LectureDownloadTarget): Promise<void> {
+  setState({
+    target,
+    inspecting: true,
+    inspectError: null,
+    isYoutubeNotice: false,
+    youtubeUrl: undefined,
+    durationSecs: 0,
+    options: [],
+  });
+
+  try {
+    const stream =
+      target.resolvedStream ||
+      (await resolveVideoStream({
+        batchId: target.batchId,
+        programId: target.programId,
+        subjectId: target.subjectId,
+        topicId: target.topicId,
+        videoId: target.videoId,
+        findKey: target.findKey,
+        videoDetailsId: target.videoDetailsId,
+        parentScheduleId: target.parentScheduleId,
+        typeId: target.typeId,
+        videoName: target.title,
+        videoImg: target.videoImg,
+        videoType: target.videoType || 'new',
+        playType: target.playType || 'Lecture',
+        videoUrl: target.rawVideoUrl,
+        isLive: target.isLive,
+        urlType: target.urlType,
+      }));
+
+    if (stream.isYoutube) {
+      setState({
+        inspecting: false,
+        isYoutubeNotice: true,
+        youtubeUrl: stream.rawUrl || stream.youtubeEmbedUrl,
+      });
+      return;
+    }
+
+    const hlsUrl = stream.hlsUrl || stream.streamUrl || '';
+    if (!hlsUrl) {
+      throw new Error('Is lecture ka video link abhi available nahi hai.');
+    }
+
+    const qs = new URLSearchParams({
+      hls_url: hlsUrl,
+      is_direct_mp4: stream.isDirectMp4 ? '1' : '0',
+    });
+    if (stream.dashUrl) qs.set('dash_url', stream.dashUrl);
+
+    const res = await fetch(`/api/lecture-download/inspect?${qs.toString()}`);
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Could not inspect video qualities.');
+    }
+
+    setState({
+      inspecting: false,
+      durationSecs: Number(json.durationSecs || 0),
+      options: Array.isArray(json.options) ? json.options : [],
+    });
+  } catch (err: any) {
+    setState({
+      inspecting: false,
+      inspectError: err?.message || 'Could not prepare lecture download options.',
+    });
+  }
+}
+
+export function closeLectureDownloadModal(): void {
+  setState({ target: null, inspecting: false, inspectError: null, options: [] });
+}
+
+export async function startLectureDownload(option: LectureDownloadOption): Promise<void> {
+  const title = state.target?.title || 'PW Lecture';
+  const durationSecs = state.durationSecs || 0;
+
+  closeLectureDownloadModal();
+  setState({ queueOpen: true });
+
+  try {
+    const res = await fetch('/api/lecture-download/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: option.url,
+        title,
+        qualityLabel: option.qualityTag || option.label,
+        format: option.format,
+        durationSecs,
+        isDirectMp4: Boolean(option.isDirectMp4),
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success || !json.jobId) {
+      throw new Error(json.message || 'Could not start download.');
+    }
+
+    const newJob: LectureDownloadJobState = {
+      id: json.jobId,
+      title,
+      qualityLabel: option.qualityTag || option.label,
+      format: option.format,
+      fileName: json.fileName || `${title}.${option.format}`,
+      status: 'downloading',
+      percent: 1,
+      downloadedBytes: 0,
+      totalDurationSecs: durationSecs,
+      processedSecs: 0,
+      autoSaved: false,
+    };
+
+    setState({ jobs: [newJob, ...state.jobs] });
+    startPollingJob(json.jobId);
+  } catch (err: any) {
+    const errJob: LectureDownloadJobState = {
+      id: `err-${Date.now()}`,
+      title,
+      qualityLabel: option.qualityTag || option.label,
+      format: option.format,
+      fileName: `${title}.${option.format}`,
+      status: 'error',
+      percent: 0,
+      downloadedBytes: 0,
+      totalDurationSecs: 0,
+      processedSecs: 0,
+      error: err?.message || 'Download failed to start',
+    };
+    setState({ jobs: [errJob, ...state.jobs], queueOpen: true });
+  }
+}
+
+export async function cancelLectureDownload(jobId: string): Promise<void> {
+  stopPollingJob(jobId);
+  setState({
+    jobs: state.jobs.filter((j) => j.id !== jobId),
+  });
+  if (!jobId.startsWith('err-')) {
+    await fetch(`/api/lecture-download/${encodeURIComponent(jobId)}`, { method: 'DELETE' }).catch(
+      () => {}
+    );
+  }
+}
+
+export function clearFinishedDownloads(): void {
+  setState({
+    jobs: state.jobs.filter((j) => j.status === 'downloading' || j.status === 'preparing' || j.status === 'finalizing'),
+  });
+}
+
+export function setDownloadQueueOpen(open: boolean): void {
+  setState({ queueOpen: open });
+}
+
+export function useLectureDownloads(): ManagerState {
+  const [snapshot, setSnapshot] = useState<ManagerState>(state);
+  useEffect(() => {
+    const onChange = () => setSnapshot(state);
+    listeners.add(onChange);
+    return () => {
+      listeners.delete(onChange);
+    };
+  }, []);
+  return snapshot;
+}

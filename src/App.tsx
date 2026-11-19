@@ -14,13 +14,15 @@ import {
 import { AdventureState, BatchItem, WatchHistoryItem, ThemeId, NavTab, AppControls } from './types';
 import {
   clearBatchCatalogCache,
-  fetchAllBatches,
+  fetchFastBatchesAndHydrate,
+  fetchPiOttCategories,
   fetchAppControls,
   getFavorites,
   toggleFavorite as toggleFavoriteService,
   getWatchHistory,
   clearWatchHistory as clearWatchHistoryService,
   getStoredTheme,
+  prefetchPiHome,
   setStoredTheme,
 } from './services/batchService';
 import {
@@ -50,6 +52,7 @@ import { Sidebar } from './components/Sidebar';
 import { PiView } from './components/PiView';
 import { CommunityView } from './components/CommunityView';
 import { TestView } from './components/TestView';
+import { LectureDownloadCenter } from './components/LectureDownloadCenter';
 
 export default function App() {
   const isOnline = useOnlineStatus();
@@ -100,13 +103,25 @@ export default function App() {
     });
 
     loadBatches();
+
+    const idlePiTimer = window.setTimeout(() => {
+      void fetchPiOttCategories().catch(() => {});
+      prefetchPiHome('660fa5f8a224340018a9aa02');
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(idlePiTimer);
+    };
   }, []);
 
   const loadBatches = async () => {
     setIsLoadingBatches(true);
     setBatchError(null);
     try {
-      const data = await fetchAllBatches();
+      const data = await fetchFastBatchesAndHydrate((fullData) => {
+        setAllBatches(fullData.batches || []);
+        setVidyapeethBatches(fullData.vidyapeeth || []);
+      });
       setAllBatches(data.batches || []);
       setVidyapeethBatches(data.vidyapeeth || []);
     } catch (err: any) {
@@ -325,11 +340,33 @@ export default function App() {
               />
             </div>
           ) : currentTab === 'pi' ? (
-            /* VIEW 1A: PI SCIENTIFIC & FOCUS WORKSPACE */
+            /* VIEW 1A: PW PI PRO (OTT) WORKSPACE */
             <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <PiView
                 onAskAi={(prompt) => handleAskAi(prompt)}
                 onActivityUpdate={() => setAdventureState(getAdventureState())}
+                xp={adventureMetrics.xp}
+                onPlayLecture={(lec) => {
+                  setActiveLecture({
+                    batchId: lec.batchId,
+                    batchName: lec.batchName,
+                    programId: lec.programId,
+                    subjectId: lec.subjectId,
+                    subjectName: lec.subjectName,
+                    topicId: lec.topicId,
+                    topicName: lec.topicName,
+                    videoId: lec.videoId,
+                    findKey: lec.findKey,
+                    videoDetailsId: lec.videoDetailsId,
+                    typeId: lec.typeId,
+                    title: lec.title,
+                    videoImg: lec.videoImg,
+                    videoType: lec.videoType,
+                    playType: lec.playType,
+                    rawVideoUrl: lec.rawVideoUrl,
+                  });
+                  handleRefreshHistory();
+                }}
               />
             </div>
           ) : currentTab === 'community' ? (
@@ -799,6 +836,9 @@ export default function App() {
 
       {/* About Modal */}
       {isAboutModalOpen && <AboutModal onClose={() => setIsAboutModalOpen(false)} />}
+
+      {/* Global Lecture Download Center (Quality Picker + Progress Queue) */}
+      <LectureDownloadCenter />
 
         {/* Mobile Bottom Navigation */}
         <BottomNav

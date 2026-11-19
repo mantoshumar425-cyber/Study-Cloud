@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Heart, Play, BookOpen, GraduationCap } from 'lucide-react';
 import { BatchItem } from '../types';
+import { prefetchBatch } from '../services/batchService';
 
 interface BatchCardProps {
   batch: BatchItem;
@@ -18,6 +19,22 @@ export const BatchCard: React.FC<BatchCardProps> = ({
   onQuickPlay,
 }) => {
   const [imgError, setImgError] = useState(false);
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const schedulePrefetch = () => {
+    if (hoverTimerRef.current) return;
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      prefetchBatch(batch.batch_id);
+    }, 120);
+  };
+
+  const cancelPrefetch = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -36,6 +53,9 @@ export const BatchCard: React.FC<BatchCardProps> = ({
   return (
     <div
       onClick={() => onSelect(batch)}
+      onMouseEnter={schedulePrefetch}
+      onMouseLeave={cancelPrefetch}
+      onTouchStart={schedulePrefetch}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-[var(--card-shadow)] transition-all duration-300 hover:-translate-y-1 hover:border-[var(--primary-color)]/60 hover:shadow-xl cursor-pointer"
     >
       {/* Banner / Thumbnail */}
@@ -45,6 +65,7 @@ export const BatchCard: React.FC<BatchCardProps> = ({
             src={batch.photo}
             alt={batch.name}
             loading="lazy"
+            decoding="async"
             onError={() => setImgError(true)}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />

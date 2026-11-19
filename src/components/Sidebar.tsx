@@ -59,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }> = [
     { id: 'batches', label: 'Batches', subtitle: '18,000+ courses', icon: BookOpen },
     { id: 'khazana', label: 'Khazana', subtitle: 'Faculty lecture vault', icon: Gem },
-    { id: 'pi', label: 'Pi', subtitle: 'Focus & scientific tools', icon: Sigma },
+    { id: 'pi', label: 'Pi', subtitle: 'Pi Pro OTT concept vault', icon: Sigma },
     { id: 'community', label: 'Community', subtitle: 'Channels & study lounge', icon: Users },
     { id: 'test', label: 'Test', subtitle: 'CBT mock & practice sets', icon: ClipboardCheck },
     { id: 'ai', label: 'AI', subtitle: 'Study AI doubt solver', icon: Sparkles },

@@ -39,6 +39,7 @@ import {
   recordStudyActivity,
   toggleLectureCompleted,
 } from '../services/adventureService';
+import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 import { StudyAiPanel } from './StudyAiPanel';
 
 export interface ActiveLectureInput {
@@ -264,7 +265,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
+        startFragPrefetch: true,
+        maxBufferLength: 20,
+        maxMaxBufferLength: 60,
         backBufferLength: 60,
+        abrEwmaDefaultEstimate: 2500000,
+        manifestLoadingTimeOut: 8000,
+        fragLoadingTimeOut: 12000,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 10,
       });
@@ -591,6 +598,38 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <CheckCircle2 className="h-4 w-4" />
             <span className="hidden md:inline">{completed ? 'Cleared (+50 XP)' : 'Complete'}</span>
           </button>
+
+          {!streamData?.isYoutube && (
+            <button
+              onClick={() => {
+                openLectureDownloadModal({
+                  batchId: lecture.batchId,
+                  programId: lecture.programId,
+                  subjectId: lecture.subjectId,
+                  topicId: lecture.topicId,
+                  videoId: lecture.videoId,
+                  findKey: lecture.findKey,
+                  videoDetailsId: lecture.videoDetailsId,
+                  parentScheduleId: lecture.parentScheduleId,
+                  typeId: lecture.typeId,
+                  title: lecture.title,
+                  videoImg: lecture.videoImg,
+                  videoType: lecture.videoType,
+                  playType: lecture.playType,
+                  rawVideoUrl: lecture.rawVideoUrl,
+                  isLive: lecture.isLive,
+                  urlType: lecture.urlType,
+                  resolvedStream: streamData,
+                });
+                revealControls();
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-600 hover:text-white transition whitespace-nowrap"
+              title="Download Lecture (MP4 / Audio)"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Download</span>
+            </button>
+          )}
 
           {!streamData?.isYoutube && (
             <button

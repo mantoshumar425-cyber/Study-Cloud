@@ -401,3 +401,158 @@ export interface AdventureState {
   enrolledBatchIds: string[];
   customBatches: BatchItem[];
 }
+
+export interface BatchExerciseDetail {
+  _id?: string;
+  type?: string;
+  status?: string;
+  title?: string;
+  resolvedExerciseId?: string;
+  totalQuestions?: number;
+  totalMarks?: number;
+  maxDuration?: number;
+  content?: Array<{
+    _id?: string;
+    exerciseId?: string;
+    exerciseDetails?: {
+      totalQuestions?: number;
+      totalMarks?: number;
+      maxDuration?: number;
+    };
+  }>;
+}
+
+export interface BatchExerciseItem {
+  _id: string;
+  status?: string;
+  date?: string;
+  startTime?: string;
+  isDPPNotes?: boolean;
+  topic?: string;
+  exerciseIds?: BatchExerciseDetail[];
+}
+
+export interface OfficialBatchTest {
+  id: string;
+  exerciseId: string;
+  title: string;
+  category: string;
+  testCatId?: string;
+  batchId: string;
+  batchName: string;
+  subjectName: string;
+  syllabus: string;
+  totalQuestions: number;
+  totalMarks: number;
+  maxDuration: number;
+  startTime?: string;
+  status: string;
+  pdfUrl?: string;
+  pdfName?: string;
+  isOfficial: boolean;
+}
+
+export interface PiSubcategory {
+  id: string;
+  name: string;
+  keyword?: string;
+}
+
+export interface PiCategory {
+  id: string;
+  name: string;
+  tagline: string;
+  icon: string;
+  programId?: string;
+  subcategories: PiSubcategory[];
+}
+
+export interface PiSeriesItem {
+  id: string;
+  type: 'khazana' | 'batch';
+  programId?: string;
+  subjectId?: string;
+  batchId?: string;
+  subjectName: string;
+  title: string;
+  subtitle: string;
+  teacherName: string;
+  teacherId?: string;
+  poster: string;
+  backdrop: string;
+  tag: string;
+  year: string;
+}
+
+export interface PiTeacherItem {
+  id: string;
+  name: string;
+  subject: string;
+  experience: string;
+  featuredLine: string;
+  image: string;
+  programId: string;
+  source?: string;
+}
+
+export interface PiEpisodeItem {
+  id: string;
+  title: string;
+  duration?: string;
+  thumb?: string;
+  programId?: string;
+  batchId: string;
+  subjectId: string;
+  topicId: string;
+  topicName: string;
+  findKey?: string;
+  videoDetailsId?: string;
+  videoType?: string;
+  rawVideoUrl?: string;
+}
+
+export interface PiQuizCard {
+  id: string;
+  title: string;
+  subject: string;
+  questionsCount: number;
+  durationMinutes: number;
+  badge: string;
+  batchId?: string;
+}
+
+export interface PiHomeResponse {
+  success: boolean;
+  category: PiCategory;
+  subcategories: PiSubcategory[];
+  activeSubId: string;
+  heroSlides: PiSeriesItem[];
+  top10Series: PiSeriesItem[];
+  teachers: PiTeacherItem[];
+  latestSeries: PiSeriesItem[];
+  conceptPlaylists: PiSeriesItem[];
+  quizCards: PiQuizCard[];
+}
+
+export interface PiTeacherProfileResponse {
+  success: boolean;
+  teacher: PiTeacherItem & { seriesCount: number };
+  series: PiSeriesItem[];
+  playlistVideos: PiEpisodeItem[];
+}
+
+export interface PiSeriesDetailResponse {
+  success: boolean;
+  type: 'khazana' | 'batch';
+  seriesId: string;
+  title?: string;
+  programId?: string;
+  subjectId?: string;
+  subjects?: Array<{ id: string; name: string }>;
+  activeSubjectId?: string;
+  topics: Array<{ id: string; name: string; videos?: number }>;
+  activeTopicId: string;
+  episodes: PiEpisodeItem[];
+  notes: BatchNoteItem[];
+}
+
