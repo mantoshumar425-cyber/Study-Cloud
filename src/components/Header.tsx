@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Download,
+  FolderDown,
   Palette,
   RotateCw,
   Info,
@@ -22,6 +23,7 @@ interface HeaderProps {
   isDesktopSidebarCollapsed: boolean;
   onToggleDesktopSidebar: () => void;
   isRefreshing?: boolean;
+  downloadsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   isDesktopSidebarCollapsed,
   onToggleDesktopSidebar,
   isRefreshing = false,
+  downloadsCount = 0,
 }) => {
   const { isInstallable, isInstalled, install, isIOS } = usePWAInstall();
 
@@ -127,6 +130,35 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">Install App</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => onTabChange('downloads')}
+            className={`relative flex h-9 items-center gap-1.5 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition whitespace-nowrap shrink-0 ${
+              currentTab === 'downloads'
+                ? 'border-[var(--primary-color)] bg-[var(--primary-color)] text-white'
+                : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--primary-color)] hover:text-[var(--text-primary)]'
+            }`}
+            title="My Offline Downloads (Inside App)"
+          >
+            <FolderDown
+              className={`h-3.5 w-3.5 ${
+                currentTab === 'downloads' ? 'text-white' : 'text-emerald-400'
+              }`}
+            />
+            <span className="hidden sm:inline">Downloads</span>
+            {downloadsCount > 0 && (
+              <span
+                className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] font-extrabold ${
+                  currentTab === 'downloads'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-emerald-500/20 text-emerald-400'
+                }`}
+              >
+                {downloadsCount}
+              </span>
+            )}
+          </button>
 
           <button
             type="button"

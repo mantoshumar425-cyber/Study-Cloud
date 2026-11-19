@@ -6,8 +6,11 @@ import {
   Download,
   ExternalLink,
   Film,
+  FolderDown,
   Headphones,
   Loader2,
+  Play,
+  Smartphone,
   Trash2,
   X,
 } from 'lucide-react';
@@ -15,11 +18,15 @@ import {
   cancelLectureDownload,
   clearFinishedDownloads,
   closeLectureDownloadModal,
+  DownloadSaveTarget,
   formatBytes,
+  openDownloadsTab,
   openLectureDownloadModal,
+  playOfflineById,
+  saveJobToGallery,
   setDownloadQueueOpen,
+  setDownloadSaveTarget,
   startLectureDownload,
-  triggerBrowserFileSave,
   useLectureDownloads,
 } from '../services/lectureDownloadManager';
 
@@ -30,6 +37,16 @@ function formatDurationLabel(secs: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${Math.max(1, m)} min`;
 }
+
+const SAVE_MODES: Array<{
+  id: DownloadSaveTarget;
+  label: string;
+  desc: string;
+}> = [
+  { id: 'both', label: 'App + Gallery', desc: 'Dono jagah save' },
+  { id: 'app', label: 'Sirf App Mein', desc: 'In-App Offline' },
+  { id: 'gallery', label: 'Direct Gallery', desc: 'Phone / Downloads' },
+];
 
 export const LectureDownloadCenter: React.FC = () => {
   const {
@@ -42,6 +59,7 @@ export const LectureDownloadCenter: React.FC = () => {
     options,
     jobs,
     queueOpen,
+    saveTarget,
   } = useLectureDownloads();
 
   const activeJobs = jobs.filter(
@@ -88,7 +106,42 @@ export const LectureDownloadCenter: React.FC = () => {
             </div>
 
             {/* Body */}
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3.5">
+              {/* Save Destination Selector */}
+              {!isYoutubeNotice && !inspectError && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                    Kahan Save Karna Hai?
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-1">
+                    {SAVE_MODES.map((m) => {
+                      const active = saveTarget === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setDownloadSaveTarget(m.id)}
+                          className={`rounded-xl px-2 py-2 text-center transition ${
+                            active
+                              ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          <div className="text-[11px] font-extrabold leading-tight">{m.label}</div>
+                          <div
+                            className={`text-[10px] mt-0.5 ${
+                              active ? 'text-white/85' : 'text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            {m.desc}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {inspecting ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                   <Loader2 className="h-8 w-8 animate-spin text-[var(--primary-color)]" />
@@ -138,9 +191,9 @@ export const LectureDownloadCenter: React.FC = () => {
               ) : (
                 <>
                   <p className="text-xs font-semibold text-[var(--text-secondary)]">
-                    Select quality to save directly to your device (MP4 / Audio):
+                    Select quality ({saveTarget === 'both' ? 'Saves in App + Phone Gallery' : saveTarget === 'app' ? 'Saves inside App Offline Vault' : 'Saves directly to Phone Gallery'}):
                   </p>
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {options.map((opt) => {
                       const isAudio = opt.format === 'm4a';
                       return (
@@ -175,7 +228,7 @@ export const LectureDownloadCenter: React.FC = () => {
                           </div>
                           <span className="flex shrink-0 items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3 py-1.5 text-xs font-bold text-white">
                             <Download className="h-3.5 w-3.5" />
-                            <span>Save</span>
+                            <span>Start</span>
                           </span>
                         </button>
                       );
@@ -196,9 +249,17 @@ export const LectureDownloadCenter: React.FC = () => {
               <div className="flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3">
                 <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold">
                   <Download className="h-4 w-4 text-[var(--primary-color)]" />
-                  <span>Lecture Downloads ({jobs.length})</span>
+                  <span>Downloads ({jobs.length})</span>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={openDownloadsTab}
+                    className="flex items-center gap-1 rounded-lg bg-[var(--primary-color)]/15 px-2 py-1 text-[11px] font-bold text-[var(--primary-color)] hover:bg-[var(--primary-color)] hover:text-white transition"
+                  >
+                    <FolderDown className="h-3 w-3" />
+                    <span>Vault</span>
+                  </button>
                   {jobs.some((j) => j.status === 'ready' || j.status === 'error') && (
                     <button
                       type="button"
@@ -239,6 +300,11 @@ export const LectureDownloadCenter: React.FC = () => {
                             <span className="text-[11px] font-mono text-[var(--text-secondary)]">
                               {job.downloadedBytes > 0 ? formatBytes(job.downloadedBytes) : job.format.toUpperCase()}
                             </span>
+                            {job.savedInApp && (
+                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                                In App
+                              </span>
+                            )}
                           </div>
                           <h5 className="mt-1 text-xs font-bold text-[var(--text-primary)] line-clamp-1">
                             {job.title}
@@ -265,7 +331,9 @@ export const LectureDownloadCenter: React.FC = () => {
                           </div>
                           <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
                             <span>
-                              {job.status === 'finalizing' ? 'Finalizing MP4...' : 'Downloading segments...'}
+                              {job.status === 'finalizing'
+                                ? 'Saving in App & Gallery...'
+                                : 'Downloading segments...'}
                             </span>
                             <span className="font-mono font-bold text-[var(--text-primary)]">
                               {job.percent}%
@@ -276,16 +344,44 @@ export const LectureDownloadCenter: React.FC = () => {
                         <div className="flex items-center justify-between gap-2 pt-0.5">
                           <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>Ready & Saved!</span>
+                            <span>{job.savedInApp ? 'Saved in App!' : 'Ready!'}</span>
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => triggerBrowserFileSave(job.id, job.fileName)}
-                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 transition"
-                          >
-                            <Download className="h-3 w-3" />
-                            <span>Save File</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {job.offlineId && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  playOfflineById({
+                                    id: job.offlineId!,
+                                    title: job.title,
+                                    batchName: job.batchName,
+                                    subjectName: job.subjectName,
+                                    qualityLabel: job.qualityLabel,
+                                    format: job.format,
+                                    fileName: job.fileName,
+                                    sizeBytes: job.downloadedBytes,
+                                    durationSecs: job.totalDurationSecs,
+                                    thumbnail: job.thumbnail,
+                                    savedAt: Date.now(),
+                                    mimeType: job.format === 'm4a' ? 'audio/mp4' : 'video/mp4',
+                                  })
+                                }
+                                className="flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-2.5 py-1 text-[11px] font-bold text-white hover:opacity-90 transition"
+                              >
+                                <Play className="h-3 w-3 fill-current" />
+                                <span>Play</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void saveJobToGallery(job.id)}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 transition"
+                              title="Save directly to Phone Gallery / Downloads"
+                            >
+                              <Smartphone className="h-3 w-3" />
+                              <span>Gallery</span>
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-[11px] text-red-400 font-medium">

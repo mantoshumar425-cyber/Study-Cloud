@@ -15,6 +15,7 @@ import {
   Flame,
   ChevronRight,
   Sigma,
+  Download,
 } from 'lucide-react';
 import { NavTab, ThemeId } from '../types';
 
@@ -28,6 +29,7 @@ interface SidebarProps {
   onOpenAbout: () => void;
   currentTheme: ThemeId;
   favoritesCount: number;
+  downloadsCount?: number;
   adventureStats: {
     xp: number;
     level: number;
@@ -46,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAbout,
   currentTheme,
   favoritesCount,
+  downloadsCount = 0,
   adventureStats,
   isMobileOpen,
   onCloseMobile,
@@ -71,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     icon: React.ComponentType<{ className?: string }>;
     count?: number;
   }> = [
+    { id: 'downloads', label: 'Downloads', icon: Download, count: downloadsCount },
     { id: 'favorites', label: 'Favorites', icon: Heart, count: favoritesCount },
     { id: 'history', label: 'History', icon: History },
     { id: 'settings', label: 'Settings', icon: Settings2 },

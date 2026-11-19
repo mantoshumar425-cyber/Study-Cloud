@@ -20,7 +20,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     { id: 'ai' as NavTab, label: 'AI', icon: Sparkles },
   ];
 
-  const isSlidebarTabActive = ['pi', 'community', 'favorites', 'history', 'settings'].includes(
+  const isSlidebarTabActive = ['pi', 'community', 'downloads', 'favorites', 'history', 'settings'].includes(
     currentTab
   );
 

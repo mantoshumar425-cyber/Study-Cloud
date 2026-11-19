@@ -356,6 +356,7 @@ export type NavTab =
   | 'test'
   | 'search'
   | 'ai'
+  | 'downloads'
   | 'favorites'
   | 'history'
   | 'settings';

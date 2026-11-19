@@ -53,6 +53,13 @@ import { PiView } from './components/PiView';
 import { CommunityView } from './components/CommunityView';
 import { TestView } from './components/TestView';
 import { LectureDownloadCenter } from './components/LectureDownloadCenter';
+import { DownloadsView } from './components/DownloadsView';
+import { registerDownloadActionHandlers } from './services/lectureDownloadManager';
+import {
+  listOfflineLectureMeta,
+  OfflineLectureMeta,
+  subscribeOfflineVault,
+} from './services/offlineLectureDb';
 
 export default function App() {
   const isOnline = useOnlineStatus();
@@ -72,6 +79,7 @@ export default function App() {
   // Favorites, History & Batch Adventure
   const [favorites, setFavorites] = useState<string[]>([]);
   const [watchHistory, setWatchHistory] = useState<WatchHistoryItem[]>([]);
+  const [downloadsCount, setDownloadsCount] = useState<number>(0);
   const [adventureState, setAdventureState] = useState<AdventureState>(() => getAdventureState());
 
   // Modals & Active Viewers
@@ -89,7 +97,22 @@ export default function App() {
   // Pagination for large 18k batch catalog
   const [displayCount, setDisplayCount] = useState(36);
 
-  // Initialize theme, favorites, history, and controls
+  const playOfflineItem = (item: OfflineLectureMeta) => {
+    setActiveLecture({
+      batchId: 'offline-vault',
+      batchName: item.batchName || 'Offline Downloads',
+      subjectId: 'offline-subject',
+      subjectName: item.subjectName || item.qualityLabel,
+      topicId: 'offline-topic',
+      videoId: item.id,
+      title: item.title,
+      videoImg: item.thumbnail,
+      offlineId: item.id,
+      offlineFormat: item.format,
+    });
+  };
+
+  // Initialize theme, favorites, history, offline vault count, and controls
   useEffect(() => {
     const savedTheme = getStoredTheme();
     setCurrentTheme(savedTheme);
@@ -97,6 +120,20 @@ export default function App() {
 
     setFavorites(getFavorites());
     setWatchHistory(getWatchHistory());
+
+    const refreshOfflineCount = () => {
+      void listOfflineLectureMeta().then((list) => setDownloadsCount(list.length));
+    };
+    refreshOfflineCount();
+    const unsubVault = subscribeOfflineVault(refreshOfflineCount);
+
+    registerDownloadActionHandlers({
+      onOpenDownloadsTab: () => {
+        setCurrentTab('downloads');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      },
+      onPlayOffline: (meta) => playOfflineItem(meta),
+    });
 
     fetchAppControls().then((ctrl) => {
       setAppControls(ctrl);
@@ -110,6 +147,7 @@ export default function App() {
     }, 1000);
 
     return () => {
+      unsubVault();
       window.clearTimeout(idlePiTimer);
     };
   }, []);
@@ -285,6 +323,7 @@ export default function App() {
         onOpenAbout={() => setIsAboutModalOpen(true)}
         currentTheme={currentTheme}
         favoritesCount={favorites.length}
+        downloadsCount={downloadsCount}
         adventureStats={{
           xp: adventureMetrics.xp,
           level: adventureMetrics.level,
@@ -314,6 +353,7 @@ export default function App() {
           isDesktopSidebarCollapsed={isDesktopSidebarCollapsed}
           onToggleDesktopSidebar={() => setIsDesktopSidebarCollapsed((prev) => !prev)}
           isRefreshing={isLoadingBatches}
+          downloadsCount={downloadsCount}
         />
 
         {/* PWA Install Banner */}
@@ -419,6 +459,14 @@ export default function App() {
                 }}
               />
             </div>
+          ) : currentTab === 'downloads' ? (
+          /* VIEW 1E: IN-APP OFFLINE DOWNLOADS VAULT */
+          <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4 sm:py-5">
+            <DownloadsView
+              onPlayOffline={(item) => playOfflineItem(item)}
+              onBrowseBatches={() => setCurrentTab('batches')}
+            />
+          </div>
           ) : currentTab === 'favorites' ? (
           /* VIEW 2: FAVORITES */
           <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4 sm:py-5">

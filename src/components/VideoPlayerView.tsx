@@ -40,6 +40,10 @@ import {
   toggleLectureCompleted,
 } from '../services/adventureService';
 import { openLectureDownloadModal } from '../services/lectureDownloadManager';
+import {
+  exportMediaToDeviceGallery,
+  getOfflineLectureRecord,
+} from '../services/offlineLectureDb';
 import { StudyAiPanel } from './StudyAiPanel';
 
 export interface ActiveLectureInput {
@@ -63,6 +67,8 @@ export interface ActiveLectureInput {
   resumeSeconds?: number;
   isLive?: boolean;
   urlType?: string;
+  offlineId?: string;
+  offlineFormat?: 'mp4' | 'm4a';
 }
 
 interface VideoPlayerViewProps {
@@ -201,12 +207,49 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     scheduleAutoHide();
   };
 
-  // 1. Resolve real stream on mount & record daily streak activity
+  const offlineBlobUrlRef = useRef<string | null>(null);
+
+  // Clean up any local offline blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (offlineBlobUrlRef.current) {
+        URL.revokeObjectURL(offlineBlobUrlRef.current);
+        offlineBlobUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  // 1. Resolve real stream on mount (or load offline blob directly) & record daily streak activity
   const loadStream = async () => {
     setResolving(true);
     setResolveError(null);
     setIsLivePendingError(false);
+
+    if (offlineBlobUrlRef.current) {
+      URL.revokeObjectURL(offlineBlobUrlRef.current);
+      offlineBlobUrlRef.current = null;
+    }
+
     try {
+      if (lecture.offlineId) {
+        const rec = await getOfflineLectureRecord(lecture.offlineId);
+        if (!rec || !rec.blob) {
+          throw new Error('Offline lecture file storage mein nahi mili.');
+        }
+        const objUrl = URL.createObjectURL(rec.blob);
+        offlineBlobUrlRef.current = objUrl;
+        if (rec.format === 'm4a') {
+          setIsAudioOnly(true);
+        }
+        setStreamData({
+          success: true,
+          streamUrl: objUrl,
+          isDirectMp4: true,
+          attachments: [],
+        });
+        return;
+      }
+
       const data = await resolveVideoStream({
         batchId: lecture.batchId,
         programId: lecture.programId,
@@ -240,7 +283,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId));
     onAdventureUpdate?.();
     loadStream();
-  }, [lecture.batchId, lecture.programId, lecture.subjectId, lecture.topicId, lecture.videoId]);
+  }, [lecture.batchId, lecture.programId, lecture.subjectId, lecture.topicId, lecture.videoId, lecture.offlineId]);
 
   // 2. Attach HLS.js or native <video> source
   useEffect(() => {
@@ -601,33 +644,47 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
           {!streamData?.isYoutube && (
             <button
-              onClick={() => {
-                openLectureDownloadModal({
-                  batchId: lecture.batchId,
-                  programId: lecture.programId,
-                  subjectId: lecture.subjectId,
-                  topicId: lecture.topicId,
-                  videoId: lecture.videoId,
-                  findKey: lecture.findKey,
-                  videoDetailsId: lecture.videoDetailsId,
-                  parentScheduleId: lecture.parentScheduleId,
-                  typeId: lecture.typeId,
-                  title: lecture.title,
-                  videoImg: lecture.videoImg,
-                  videoType: lecture.videoType,
-                  playType: lecture.playType,
-                  rawVideoUrl: lecture.rawVideoUrl,
-                  isLive: lecture.isLive,
-                  urlType: lecture.urlType,
-                  resolvedStream: streamData,
-                });
+              onClick={async () => {
+                if (lecture.offlineId) {
+                  const rec = await getOfflineLectureRecord(lecture.offlineId);
+                  if (rec?.blob) {
+                    await exportMediaToDeviceGallery({
+                      blob: rec.blob,
+                      fileName: rec.fileName,
+                      mimeType: rec.mimeType,
+                      title: rec.title,
+                    });
+                  }
+                } else {
+                  openLectureDownloadModal({
+                    batchId: lecture.batchId,
+                    batchName: lecture.batchName,
+                    programId: lecture.programId,
+                    subjectId: lecture.subjectId,
+                    subjectName: lecture.subjectName,
+                    topicId: lecture.topicId,
+                    videoId: lecture.videoId,
+                    findKey: lecture.findKey,
+                    videoDetailsId: lecture.videoDetailsId,
+                    parentScheduleId: lecture.parentScheduleId,
+                    typeId: lecture.typeId,
+                    title: lecture.title,
+                    videoImg: lecture.videoImg,
+                    videoType: lecture.videoType,
+                    playType: lecture.playType,
+                    rawVideoUrl: lecture.rawVideoUrl,
+                    isLive: lecture.isLive,
+                    urlType: lecture.urlType,
+                    resolvedStream: streamData,
+                  });
+                }
                 revealControls();
               }}
               className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-600 hover:text-white transition whitespace-nowrap"
-              title="Download Lecture (MP4 / Audio)"
+              title={lecture.offlineId ? 'Save to Phone Gallery' : 'Download Lecture (MP4 / Audio)'}
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Download</span>
+              <span className="hidden sm:inline">{lecture.offlineId ? 'Save Gallery' : 'Download'}</span>
             </button>
           )}
 
