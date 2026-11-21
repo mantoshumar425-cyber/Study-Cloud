@@ -54,12 +54,37 @@ import { CommunityView } from './components/CommunityView';
 import { TestView } from './components/TestView';
 import { LectureDownloadCenter } from './components/LectureDownloadCenter';
 import { DownloadsView } from './components/DownloadsView';
+import { ShareWebsiteModal } from './components/ShareWebsiteModal';
 import { registerDownloadActionHandlers } from './services/lectureDownloadManager';
 import {
   listOfflineLectureMeta,
   OfflineLectureMeta,
   subscribeOfflineVault,
 } from './services/offlineLectureDb';
+
+const VALID_NAV_TABS: NavTab[] = [
+  'batches',
+  'khazana',
+  'pi',
+  'community',
+  'test',
+  'ai',
+  'downloads',
+  'favorites',
+  'history',
+  'settings',
+];
+
+function getInitialNavTab(): NavTab {
+  if (typeof window === 'undefined') return 'batches';
+  try {
+    const t = new URLSearchParams(window.location.search).get('tab') as NavTab | null;
+    if (t && VALID_NAV_TABS.includes(t)) return t;
+  } catch {
+    // ignore
+  }
+  return 'batches';
+}
 
 export default function App() {
   const isOnline = useOnlineStatus();
@@ -70,7 +95,7 @@ export default function App() {
   const [isLoadingBatches, setIsLoadingBatches] = useState(true);
   const [batchError, setBatchError] = useState<string | null>(null);
 
-  const [currentTab, setCurrentTab] = useState<NavTab>('batches');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => getInitialNavTab());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
@@ -88,6 +113,7 @@ export default function App() {
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isAddBatchModalOpen, setIsAddBatchModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<ThemeId>('dark');
   const [appControls, setAppControls] = useState<AppControls | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -321,6 +347,7 @@ export default function App() {
         }}
         onOpenThemes={() => setIsThemeModalOpen(true)}
         onOpenAbout={() => setIsAboutModalOpen(true)}
+        onOpenShare={() => setIsShareModalOpen(true)}
         currentTheme={currentTheme}
         favoritesCount={favorites.length}
         downloadsCount={downloadsCount}
@@ -345,6 +372,7 @@ export default function App() {
           }}
           onOpenThemes={() => setIsThemeModalOpen(true)}
           onOpenAbout={() => setIsAboutModalOpen(true)}
+          onOpenShare={() => setIsShareModalOpen(true)}
           onRefresh={async () => {
             await clearBatchCatalogCache();
             await loadBatches();
@@ -884,6 +912,9 @@ export default function App() {
 
       {/* About Modal */}
       {isAboutModalOpen && <AboutModal onClose={() => setIsAboutModalOpen(false)} />}
+
+      {/* Share & Promote Website Modal */}
+      {isShareModalOpen && <ShareWebsiteModal onClose={() => setIsShareModalOpen(false)} />}
 
       {/* Global Lecture Download Center (Quality Picker + Progress Queue) */}
       <LectureDownloadCenter />

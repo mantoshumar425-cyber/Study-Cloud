@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Sigma,
   Download,
+  Share2,
 } from 'lucide-react';
 import { NavTab, ThemeId } from '../types';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
   onSelectTab: (tab: NavTab) => void;
   onOpenThemes: () => void;
   onOpenAbout: () => void;
+  onOpenShare?: () => void;
   currentTheme: ThemeId;
   favoritesCount: number;
   downloadsCount?: number;
@@ -46,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   onOpenThemes,
   onOpenAbout,
+  onOpenShare,
   currentTheme,
   favoritesCount,
   downloadsCount = 0,
@@ -213,6 +216,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {/* Share & Promote Website Trigger */}
+          {onOpenShare && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenShare();
+                onCloseMobile();
+              }}
+              title={compact ? 'Share Website' : undefined}
+              className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-indigo-300 hover:bg-indigo-500/15 hover:text-white transition ${
+                compact ? 'justify-center px-2' : ''
+              }`}
+            >
+              <Share2 className="h-4 w-4 shrink-0 text-indigo-400" />
+              {!compact && (
+                <div className="min-w-0 flex-1 flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-semibold whitespace-nowrap">Share Website</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    QR & Link
+                  </span>
+                </div>
+              )}
+            </button>
+          )}
 
           {/* Theme Modal Trigger inside Slidebar */}
           <button

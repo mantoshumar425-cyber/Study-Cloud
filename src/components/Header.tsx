@@ -8,6 +8,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Share2,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { NavTab } from '../types';
@@ -24,6 +25,7 @@ interface HeaderProps {
   onToggleDesktopSidebar: () => void;
   isRefreshing?: boolean;
   downloadsCount?: number;
+  onOpenShare?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDesktopSidebar,
   isRefreshing = false,
   downloadsCount = 0,
+  onOpenShare,
 }) => {
   const { isInstallable, isInstalled, install, isIOS } = usePWAInstall();
 
@@ -159,6 +162,18 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
+
+          {onOpenShare && (
+            <button
+              type="button"
+              onClick={onOpenShare}
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-indigo-500/35 bg-indigo-500/15 px-2.5 sm:px-3 text-xs font-bold text-indigo-300 transition hover:bg-indigo-600 hover:text-white whitespace-nowrap shrink-0"
+              title="Share Study Cloud Website"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Share</span>
+            </button>
+          )}
 
           <button
             type="button"

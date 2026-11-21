@@ -58,10 +58,15 @@ export interface LectureDownloadJobState {
   totalDurationSecs: number;
   processedSecs: number;
   error?: string | null;
+  inAppWarning?: string | null;
   autoSaved?: boolean;
   saveTarget: DownloadSaveTarget;
   savedInApp?: boolean;
   offlineId?: string;
+  galleryBlobUrl?: string;
+  savingToGallery?: boolean;
+  retryTarget?: LectureDownloadTarget;
+  retryOption?: LectureDownloadOption;
 }
 
 interface ManagerState {
@@ -104,6 +109,7 @@ let state: ManagerState = {
 
 const listeners = new Set<() => void>();
 const pollTimers = new Map<string, number>();
+const finalizingJobs = new Set<string>();
 let navigateToDownloadsHandler: (() => void) | null = null;
 let playOfflineHandler: ((meta: OfflineLectureMeta) => void) | null = null;
 
@@ -151,26 +157,98 @@ export function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
-export function triggerBrowserFileSave(jobId: string, fileName: string): void {
-  const a = document.createElement('a');
-  a.href = `/api/lecture-download/file/${encodeURIComponent(jobId)}`;
-  a.download = fileName;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+const TRANSFER_CHUNK_BYTES = 6 * 1024 * 1024; // 6MB (< Cloud Run 32MB limit)
+
+async function fetchChunkWithRetry(
+  jobId: string,
+  offset: number,
+  length: number,
+  attempts = 3
+): Promise<{ buffer: Uint8Array<ArrayBuffer>; totalBytes: number }> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const url = `/api/lecture-download/chunk/${encodeURIComponent(jobId)}?offset=${offset}&length=${length}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const totalBytes = Number(res.headers.get('X-Total-Bytes') || 0);
+      const ab = await res.arrayBuffer();
+      return { buffer: new Uint8Array(ab), totalBytes };
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr || new Error('Chunk transfer failed');
+}
+
+async function fetchChunkedBlobFromServer(
+  jobId: string,
+  knownTotalBytes: number,
+  mimeType: string,
+  onProgress: (receivedBytes: number, totalBytes: number) => void
+): Promise<Blob> {
+  // Fetch first 6MB chunk to learn authoritative total byte size
+  const first = await fetchChunkWithRetry(jobId, 0, TRANSFER_CHUNK_BYTES, 3);
+  const totalBytes = first.totalBytes || knownTotalBytes || first.buffer.byteLength;
+
+  if (first.buffer.byteLength >= totalBytes) {
+    onProgress(first.buffer.byteLength, totalBytes);
+    return new Blob([first.buffer], { type: mimeType });
+  }
+
+  const totalChunks = Math.ceil(totalBytes / TRANSFER_CHUNK_BYTES);
+  const parts: Uint8Array<ArrayBuffer>[] = new Array(totalChunks);
+  parts[0] = first.buffer;
+  let received = first.buffer.byteLength;
+  onProgress(received, totalBytes);
+
+  let nextIdx = 1;
+  const workerCount = Math.min(3, Math.max(1, totalChunks - 1));
+  const worker = async () => {
+    while (true) {
+      const idx = nextIdx++;
+      if (idx >= totalChunks) return;
+      const offset = idx * TRANSFER_CHUNK_BYTES;
+      const chunkLen = Math.min(TRANSFER_CHUNK_BYTES, totalBytes - offset);
+      const { buffer } = await fetchChunkWithRetry(jobId, offset, chunkLen, 3);
+      parts[idx] = buffer;
+      received += buffer.byteLength;
+      onProgress(received, totalBytes);
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  const finalBlob = new Blob(parts, { type: mimeType });
+  parts.length = 0;
+  return finalBlob;
 }
 
 export async function saveJobToGallery(jobId: string, forceShareSheet = false): Promise<void> {
   const job = state.jobs.find((j) => j.id === jobId);
-  const fileName = job?.fileName || 'lecture.mp4';
-  const mimeType = job?.format === 'm4a' ? 'audio/mp4' : 'video/mp4';
+  if (!job) return;
+  const fileName = job.fileName || 'lecture.mp4';
+  const mimeType = job.format === 'm4a' ? 'audio/mp4' : 'video/mp4';
 
-  if (job?.offlineId) {
+  if (job.offlineId) {
     const rec = await getOfflineLectureRecord(job.offlineId);
     if (rec?.blob) {
+      let galleryBlobUrl = job.galleryBlobUrl;
+      if (!galleryBlobUrl) {
+        galleryBlobUrl = URL.createObjectURL(rec.blob);
+        setState({
+          jobs: state.jobs.map((j) =>
+            j.id === jobId ? { ...j, galleryBlobUrl, inAppWarning: null } : j
+          ),
+        });
+      }
       await exportMediaToDeviceGallery({
         blob: rec.blob,
+        blobUrl: galleryBlobUrl,
         fileName: rec.fileName,
         mimeType: rec.mimeType,
         title: rec.title,
@@ -180,121 +258,191 @@ export async function saveJobToGallery(jobId: string, forceShareSheet = false): 
     }
   }
 
-  if (forceShareSheet) {
-    try {
-      const res = await fetch(`/api/lecture-download/file/${encodeURIComponent(jobId)}`);
-      if (res.ok) {
-        const blob = await res.blob();
-        await exportMediaToDeviceGallery({
-          blob,
-          fileName,
-          mimeType,
-          title: job?.title || fileName,
-          forceShareSheet: true,
-        });
-        return;
-      }
-    } catch {
-      // fallback below
-    }
+  if (job.galleryBlobUrl && !forceShareSheet) {
+    await exportMediaToDeviceGallery({
+      blobUrl: job.galleryBlobUrl,
+      fileName,
+      mimeType,
+      title: job.title || fileName,
+    });
+    return;
   }
 
-  await exportMediaToDeviceGallery({
-    fallbackUrl: `/api/lecture-download/file/${encodeURIComponent(jobId)}`,
-    fileName,
-    mimeType,
-    title: job?.title || fileName,
+  setState({
+    jobs: state.jobs.map((j) =>
+      j.id === jobId ? { ...j, savingToGallery: true, inAppWarning: null } : j
+    ),
   });
+  try {
+    const blob = await fetchChunkedBlobFromServer(
+      jobId,
+      job.downloadedBytes || 0,
+      mimeType,
+      () => {}
+    );
+    if (blob.size > 0) {
+      const galleryBlobUrl = job.galleryBlobUrl || URL.createObjectURL(blob);
+      setState({
+        jobs: state.jobs.map((j) =>
+          j.id === jobId ? { ...j, galleryBlobUrl, savingToGallery: false } : j
+        ),
+      });
+      await exportMediaToDeviceGallery({
+        blob,
+        blobUrl: galleryBlobUrl,
+        fileName,
+        mimeType,
+        title: job.title || fileName,
+        forceShareSheet,
+      });
+      return;
+    }
+    throw new Error('Empty file received');
+  } catch (err: any) {
+    setState({
+      jobs: state.jobs.map((j) =>
+        j.id === jobId
+          ? {
+              ...j,
+              savingToGallery: false,
+              inAppWarning: `Gallery save error: ${err?.message || 'Session expire — Retry karein.'}`,
+            }
+          : j
+      ),
+    });
+  }
 }
 
 async function finalizeCompletedServerJob(
   jobSnapshot: LectureDownloadJobState,
   serverData: any
 ): Promise<void> {
-  const fileName = String(serverData.fileName || jobSnapshot.fileName || 'lecture.mp4');
-  const format = jobSnapshot.format;
-  const mimeType = format === 'm4a' ? 'audio/mp4' : 'video/mp4';
-  const saveTarget = jobSnapshot.saveTarget || 'both';
-  const wantsInApp = saveTarget === 'app' || saveTarget === 'both';
-  const wantsGallery = saveTarget === 'gallery' || saveTarget === 'both';
+  if (finalizingJobs.has(jobSnapshot.id)) return;
+  finalizingJobs.add(jobSnapshot.id);
 
-  let fetchedBlob: Blob | null = null;
-  let savedOfflineOk = false;
+  try {
+    const fileName = String(serverData.fileName || jobSnapshot.fileName || 'lecture.mp4');
+    const format = jobSnapshot.format;
+    const mimeType = format === 'm4a' ? 'audio/mp4' : 'video/mp4';
+    const saveTarget = jobSnapshot.saveTarget || 'both';
+    const wantsInApp = saveTarget === 'app' || saveTarget === 'both';
+    const wantsGallery = saveTarget === 'gallery' || saveTarget === 'both';
+    const serverBytes = Number(serverData.downloadedBytes ?? jobSnapshot.downloadedBytes ?? 0);
 
-  if (wantsInApp) {
+    let fetchedBlob: Blob | null = null;
+    let galleryBlobUrl: string | undefined;
+    let savedOfflineOk = false;
+    let inAppWarning: string | null = null;
+
+    if (wantsInApp || wantsGallery) {
+      setState({
+        jobs: state.jobs.map((j) =>
+          j.id === jobSnapshot.id
+            ? {
+                ...j,
+                status: 'finalizing',
+                percent: 95,
+                downloadedBytes: serverBytes,
+              }
+            : j
+        ),
+      });
+
+      try {
+        fetchedBlob = await fetchChunkedBlobFromServer(
+          jobSnapshot.id,
+          serverBytes,
+          mimeType,
+          (received, total) => {
+            const denom = total > 0 ? total : serverBytes;
+            const subPct = denom > 0 ? Math.min(99, 95 + Math.round((received / denom) * 4)) : 97;
+            setState({
+              jobs: state.jobs.map((j) =>
+                j.id === jobSnapshot.id && j.status === 'finalizing'
+                  ? { ...j, percent: subPct }
+                  : j
+              ),
+            });
+          }
+        );
+
+        if (fetchedBlob && fetchedBlob.size > 0) {
+          galleryBlobUrl = URL.createObjectURL(fetchedBlob);
+          if (wantsInApp) {
+            try {
+              await saveOfflineLecture({
+                id: jobSnapshot.id,
+                title: jobSnapshot.title,
+                batchName: jobSnapshot.batchName,
+                subjectName: jobSnapshot.subjectName,
+                qualityLabel: jobSnapshot.qualityLabel,
+                format,
+                fileName,
+                sizeBytes: fetchedBlob.size || serverBytes,
+                durationSecs: Number(serverData.totalDurationSecs ?? jobSnapshot.totalDurationSecs ?? 0),
+                thumbnail: jobSnapshot.thumbnail,
+                savedAt: Date.now(),
+                mimeType,
+                blob: fetchedBlob,
+              });
+              savedOfflineOk = true;
+            } catch (idbErr: any) {
+              savedOfflineOk = false;
+              const isQuota =
+                idbErr?.name === 'QuotaExceededError' ||
+                String(idbErr?.message || '').toLowerCase().includes('quota');
+              inAppWarning = isQuota
+                ? 'Browser storage full hai — niche Gallery button se phone mein save karein.'
+                : 'In-App vault save blocked — niche Gallery button se save karein.';
+            }
+          }
+        }
+      } catch (xferErr: any) {
+        savedOfflineOk = false;
+        inAppWarning = `Transfer ruk gaya (${xferErr?.message || 'network'}) — niche Gallery dabakar fir try karein.`;
+      }
+    }
+
+    const finalSize = fetchedBlob?.size || serverBytes;
+
     setState({
       jobs: state.jobs.map((j) =>
         j.id === jobSnapshot.id
           ? {
               ...j,
-              status: 'finalizing',
-              percent: 99,
-              downloadedBytes: Number(serverData.downloadedBytes ?? j.downloadedBytes),
+              status: 'ready',
+              percent: 100,
+              downloadedBytes: finalSize,
+              totalDurationSecs: Number(serverData.totalDurationSecs ?? j.totalDurationSecs),
+              processedSecs: Number(serverData.processedSecs ?? j.processedSecs),
+              fileName,
+              autoSaved: true,
+              savedInApp: savedOfflineOk,
+              inAppWarning,
+              offlineId: savedOfflineOk ? jobSnapshot.id : undefined,
+              galleryBlobUrl,
             }
           : j
       ),
     });
 
-    try {
-      const fileRes = await fetch(`/api/lecture-download/file/${encodeURIComponent(jobSnapshot.id)}`);
-      if (fileRes.ok) {
-        const rawBlob = await fileRes.blob();
-        fetchedBlob = new Blob([rawBlob], { type: mimeType });
-        await saveOfflineLecture({
-          id: jobSnapshot.id,
-          title: jobSnapshot.title,
-          batchName: jobSnapshot.batchName,
-          subjectName: jobSnapshot.subjectName,
-          qualityLabel: jobSnapshot.qualityLabel,
-          format,
-          fileName,
-          sizeBytes: fetchedBlob.size || Number(serverData.downloadedBytes || 0),
-          durationSecs: Number(serverData.totalDurationSecs ?? jobSnapshot.totalDurationSecs ?? 0),
-          thumbnail: jobSnapshot.thumbnail,
-          savedAt: Date.now(),
-          mimeType,
+    if (wantsGallery && fetchedBlob) {
+      try {
+        await exportMediaToDeviceGallery({
           blob: fetchedBlob,
+          blobUrl: galleryBlobUrl,
+          fileName,
+          mimeType,
+          title: jobSnapshot.title,
         });
-        savedOfflineOk = true;
+      } catch {
+        // User has instant local blob <a download> Gallery link right on the card
       }
-    } catch {
-      savedOfflineOk = false;
     }
-  }
 
-  setState({
-    jobs: state.jobs.map((j) =>
-      j.id === jobSnapshot.id
-        ? {
-            ...j,
-            status: 'ready',
-            percent: 100,
-            downloadedBytes: Number(
-              fetchedBlob?.size ?? serverData.downloadedBytes ?? j.downloadedBytes
-            ),
-            totalDurationSecs: Number(serverData.totalDurationSecs ?? j.totalDurationSecs),
-            processedSecs: Number(serverData.processedSecs ?? j.processedSecs),
-            fileName,
-            autoSaved: true,
-            savedInApp: savedOfflineOk,
-            offlineId: savedOfflineOk ? jobSnapshot.id : undefined,
-          }
-        : j
-    ),
-  });
-
-  if (wantsGallery) {
-    try {
-      await exportMediaToDeviceGallery({
-        blob: fetchedBlob,
-        fallbackUrl: `/api/lecture-download/file/${encodeURIComponent(jobSnapshot.id)}`,
-        fileName,
-        mimeType,
-        title: jobSnapshot.title,
-      });
-    } catch {
-      // User can always tap "Gallery" directly on the card
-    }
+    fetchedBlob = null;
+  } finally {
+    finalizingJobs.delete(jobSnapshot.id);
   }
 }
 
@@ -306,6 +454,19 @@ function startPollingJob(jobId: string) {
       const res = await fetch(`/api/lecture-download/status/${encodeURIComponent(jobId)}`);
       if (!res.ok) {
         stopPollingJob(jobId);
+        if (res.status === 404) {
+          setState({
+            jobs: state.jobs.map((j) =>
+              j.id === jobId && j.status !== 'ready' && j.status !== 'cancelled'
+                ? {
+                    ...j,
+                    status: 'error',
+                    error: 'Download session expire ho gaya — Retry dabakar fir se download karein.',
+                  }
+                : j
+            ),
+          });
+        }
         return;
       }
       const data = await res.json();
@@ -432,13 +593,18 @@ export function closeLectureDownloadModal(): void {
   setState({ target: null, inspecting: false, inspectError: null, options: [] });
 }
 
-export async function startLectureDownload(option: LectureDownloadOption): Promise<void> {
-  const currentTarget = state.target;
+export async function startLectureDownload(
+  option: LectureDownloadOption,
+  overrideTarget?: LectureDownloadTarget | null
+): Promise<void> {
+  const currentTarget = overrideTarget ?? state.target;
   const title = currentTarget?.title || 'PW Lecture';
   const durationSecs = state.durationSecs || 0;
   const saveTarget = state.saveTarget;
 
-  closeLectureDownloadModal();
+  if (!overrideTarget) {
+    closeLectureDownloadModal();
+  }
   setState({ queueOpen: true });
 
   try {
@@ -475,6 +641,8 @@ export async function startLectureDownload(option: LectureDownloadOption): Promi
       processedSecs: 0,
       autoSaved: false,
       saveTarget,
+      retryTarget: currentTarget || undefined,
+      retryOption: option,
     };
 
     setState({ jobs: [newJob, ...state.jobs] });
@@ -496,13 +664,46 @@ export async function startLectureDownload(option: LectureDownloadOption): Promi
       processedSecs: 0,
       error: err?.message || 'Download failed to start',
       saveTarget,
+      retryTarget: currentTarget || undefined,
+      retryOption: option,
     };
     setState({ jobs: [errJob, ...state.jobs], queueOpen: true });
   }
 }
 
+export async function retryLectureDownload(jobId: string): Promise<void> {
+  const job = state.jobs.find((j) => j.id === jobId);
+  if (!job) return;
+  await cancelLectureDownload(jobId);
+
+  if (job.retryTarget) {
+    await openLectureDownloadModal({ ...job.retryTarget, resolvedStream: null });
+    return;
+  }
+  if (job.retryOption) {
+    await startLectureDownload(job.retryOption, {
+      batchId: '',
+      subjectId: '',
+      topicId: '',
+      videoId: job.id,
+      title: job.title,
+      batchName: job.batchName,
+      subjectName: job.subjectName,
+      videoImg: job.thumbnail,
+    });
+  }
+}
+
 export async function cancelLectureDownload(jobId: string): Promise<void> {
   stopPollingJob(jobId);
+  const existing = state.jobs.find((j) => j.id === jobId);
+  if (existing?.galleryBlobUrl) {
+    try {
+      URL.revokeObjectURL(existing.galleryBlobUrl);
+    } catch {
+      // ignore
+    }
+  }
   setState({
     jobs: state.jobs.filter((j) => j.id !== jobId),
   });
@@ -514,11 +715,19 @@ export async function cancelLectureDownload(jobId: string): Promise<void> {
 }
 
 export function clearFinishedDownloads(): void {
-  setState({
-    jobs: state.jobs.filter(
-      (j) => j.status === 'downloading' || j.status === 'preparing' || j.status === 'finalizing'
-    ),
-  });
+  const remaining: LectureDownloadJobState[] = [];
+  for (const j of state.jobs) {
+    if (j.status === 'downloading' || j.status === 'preparing' || j.status === 'finalizing') {
+      remaining.push(j);
+    } else if (j.galleryBlobUrl) {
+      try {
+        URL.revokeObjectURL(j.galleryBlobUrl);
+      } catch {
+        // ignore
+      }
+    }
+  }
+  setState({ jobs: remaining });
 }
 
 export function setDownloadQueueOpen(open: boolean): void {

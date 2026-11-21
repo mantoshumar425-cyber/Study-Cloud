@@ -10,6 +10,8 @@ import {
   Headphones,
   Loader2,
   Play,
+  RotateCcw,
+  Share2,
   Smartphone,
   Trash2,
   X,
@@ -23,12 +25,14 @@ import {
   openDownloadsTab,
   openLectureDownloadModal,
   playOfflineById,
+  retryLectureDownload,
   saveJobToGallery,
   setDownloadQueueOpen,
   setDownloadSaveTarget,
   startLectureDownload,
   useLectureDownloads,
 } from '../services/lectureDownloadManager';
+import { canShareMediaFiles, isMobileIosBrowser } from '../services/offlineLectureDb';
 
 function formatDurationLabel(secs: number): string {
   if (!secs || secs <= 0) return '';
@@ -341,51 +345,97 @@ export const LectureDownloadCenter: React.FC = () => {
                           </div>
                         </div>
                       ) : job.status === 'ready' ? (
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>{job.savedInApp ? 'Saved in App!' : 'Ready!'}</span>
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            {job.offlineId && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  playOfflineById({
-                                    id: job.offlineId!,
-                                    title: job.title,
-                                    batchName: job.batchName,
-                                    subjectName: job.subjectName,
-                                    qualityLabel: job.qualityLabel,
-                                    format: job.format,
-                                    fileName: job.fileName,
-                                    sizeBytes: job.downloadedBytes,
-                                    durationSecs: job.totalDurationSecs,
-                                    thumbnail: job.thumbnail,
-                                    savedAt: Date.now(),
-                                    mimeType: job.format === 'm4a' ? 'audio/mp4' : 'video/mp4',
-                                  })
-                                }
-                                className="flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-2.5 py-1 text-[11px] font-bold text-white hover:opacity-90 transition"
-                              >
-                                <Play className="h-3 w-3 fill-current" />
-                                <span>Play</span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => void saveJobToGallery(job.id)}
-                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 transition"
-                              title="Save directly to Phone Gallery / Downloads"
-                            >
-                              <Smartphone className="h-3 w-3" />
-                              <span>Gallery</span>
-                            </button>
+                        <div className="space-y-1.5 pt-0.5">
+                          {job.inAppWarning && (
+                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-300">
+                              {job.inAppWarning}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>{job.savedInApp ? 'Saved in App!' : 'Ready to Save!'}</span>
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {job.offlineId && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    playOfflineById({
+                                      id: job.offlineId!,
+                                      title: job.title,
+                                      batchName: job.batchName,
+                                      subjectName: job.subjectName,
+                                      qualityLabel: job.qualityLabel,
+                                      format: job.format,
+                                      fileName: job.fileName,
+                                      sizeBytes: job.downloadedBytes,
+                                      durationSecs: job.totalDurationSecs,
+                                      thumbnail: job.thumbnail,
+                                      savedAt: Date.now(),
+                                      mimeType: job.format === 'm4a' ? 'audio/mp4' : 'video/mp4',
+                                    })
+                                  }
+                                  className="flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-2.5 py-1 text-[11px] font-bold text-white hover:opacity-90 transition"
+                                >
+                                  <Play className="h-3 w-3 fill-current" />
+                                  <span>Play</span>
+                                </button>
+                              )}
+                              {job.galleryBlobUrl && !isMobileIosBrowser() ? (
+                                <a
+                                  href={job.galleryBlobUrl}
+                                  download={job.fileName}
+                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 transition"
+                                  title="Save directly to Phone Gallery / Downloads"
+                                >
+                                  <Smartphone className="h-3 w-3" />
+                                  <span>Gallery</span>
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={Boolean(job.savingToGallery)}
+                                  onClick={() => void saveJobToGallery(job.id)}
+                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 disabled:opacity-60 transition"
+                                  title="Save directly to Phone Gallery / Downloads"
+                                >
+                                  {job.savingToGallery ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Smartphone className="h-3 w-3" />
+                                  )}
+                                  <span>{job.savingToGallery ? 'Saving...' : 'Gallery'}</span>
+                                </button>
+                              )}
+                              {canShareMediaFiles() && (
+                                <button
+                                  type="button"
+                                  onClick={() => void saveJobToGallery(job.id, true)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+                                  title="Share / Save Video to Photos"
+                                >
+                                  <Share2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-red-400 font-medium">
-                          {job.error || 'Download failed'}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[11px] text-red-400 font-medium line-clamp-2">
+                            {job.error || 'Download failed'}
+                          </span>
+                          {(job.retryTarget || job.retryOption) && (
+                            <button
+                              type="button"
+                              onClick={() => void retryLectureDownload(job.id)}
+                              className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--primary-color)] px-2.5 py-1 text-[11px] font-bold text-white hover:opacity-90 transition"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              <span>Retry</span>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

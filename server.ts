@@ -1488,14 +1488,21 @@ export function createApiApp() {
     const urlTypeHint = String(req.query.url_type || '').toLowerCase();
 
     try {
-      // Handle YouTube URLs directly (by videoType OR by URL pattern)
-      const directYt = extractYoutubeEmbed(rawVideoUrl);
-      if ((videoType === 'youtube' && rawVideoUrl) || directYt) {
+      // Handle YouTube URLs directly (by videoType OR by URL pattern OR ytimg thumbnail fallback)
+      let effectiveYtRawUrl = rawVideoUrl;
+      if (videoType === 'youtube' && !effectiveYtRawUrl && videoImg) {
+        const ytThumbMatch = videoImg.match(/ytimg\.com\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\//i);
+        if (ytThumbMatch?.[1]) {
+          effectiveYtRawUrl = `https://www.youtube.com/watch?v=${ytThumbMatch[1]}`;
+        }
+      }
+      const directYt = extractYoutubeEmbed(effectiveYtRawUrl);
+      if ((videoType === 'youtube' && effectiveYtRawUrl) || directYt) {
         return res.json({
           success: true,
           isYoutube: true,
-          youtubeEmbedUrl: directYt || rawVideoUrl,
-          rawUrl: rawVideoUrl,
+          youtubeEmbedUrl: directYt || effectiveYtRawUrl,
+          rawUrl: effectiveYtRawUrl,
           attachments: [],
         });
       }
@@ -2125,11 +2132,25 @@ export function createApiApp() {
       const contentType = upstream.headers.get('content-type') || 'application/pdf';
       const buf = Buffer.from(await upstream.arrayBuffer());
 
+      const asciiPdfFallback =
+        fileName
+          .replace(/[^\x20-\x7e]/g, '')
+          .replace(/["\\;\r\n]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim() || 'study-notes.pdf';
+      const safeAsciiPdf = asciiPdfFallback.toLowerCase().endsWith('.pdf')
+        ? asciiPdfFallback
+        : `${asciiPdfFallback.replace(/\.+$/, '') || 'study-notes'}.pdf`;
+      const encodedPdfName = encodeURIComponent(fileName.replace(/[\r\n]/g, ' ').trim()).replace(
+        /['()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+      );
+
       res.setHeader('Content-Type', contentType.includes('pdf') ? contentType : 'application/pdf');
       res.setHeader('Content-Length', String(buf.length));
       res.setHeader(
         'Content-Disposition',
-        `${download ? 'attachment' : 'inline'}; filename="${fileName.replace(/"/g, '')}"`
+        `${download ? 'attachment' : 'inline'}; filename="${safeAsciiPdf}"; filename*=UTF-8''${encodedPdfName}`
       );
       res.setHeader('Cache-Control', 'public, max-age=3600');
       return res.send(buf);
@@ -2154,12 +2175,15 @@ export function createApiApp() {
     error?: string;
     createdAt: number;
     proc?: ChildProcess;
+    tempDir?: string;
+    abortCtrl?: AbortController;
   }
 
   const lectureDownloadJobs = new Map<string, LectureDownloadJob>();
 
   const sanitizeMediaFileName = (raw: string, ext: string) => {
     const clean = String(raw || 'Lecture')
+      .replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ')
       .replace(/[/\\?%*:|"<>]/g, '_')
       .replace(/\s+/g, ' ')
       .trim()
@@ -2167,16 +2191,157 @@ export function createApiApp() {
     return `${clean || 'Lecture'}.${ext}`;
   };
 
+  const buildSafeContentDisposition = (
+    disposition: 'attachment' | 'inline',
+    rawFileName: string,
+    ext: string
+  ) => {
+    const cleanedUtf8 = String(rawFileName || `Lecture.${ext}`)
+      .replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const baseWithoutExt = cleanedUtf8.replace(new RegExp(`\\.${ext}$`, 'i'), '');
+    const asciiBase =
+      baseWithoutExt
+        .replace(/[^\x20-\x7e]/g, '')
+        .replace(/["\\;]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim() || 'PW_Lecture';
+    const asciiName = `${asciiBase}.${ext}`;
+    const encodedUtf8 = encodeURIComponent(cleanedUtf8 || asciiName).replace(
+      /['()*]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+    return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedUtf8}`;
+  };
+
+  const getJobMetaPath = (jobId: string) => path.join(os.tmpdir(), `sc_lec_${jobId}.json`);
+
+  const persistReadyJobMeta = (job: LectureDownloadJob) => {
+    try {
+      fs.writeFileSync(
+        getJobMetaPath(job.id),
+        JSON.stringify({
+          id: job.id,
+          title: job.title,
+          qualityLabel: job.qualityLabel,
+          format: job.format,
+          fileName: job.fileName,
+          filePath: job.filePath,
+          downloadedBytes: job.downloadedBytes,
+          totalDurationSecs: job.totalDurationSecs,
+          processedSecs: job.processedSecs,
+          createdAt: job.createdAt,
+        }),
+        'utf8'
+      );
+    } catch {
+      // ignore meta write error
+    }
+  };
+
+  const resolveDownloadJob = (rawJobId: string): LectureDownloadJob | undefined => {
+    const jobId = String(rawJobId || '').trim();
+    const existing = lectureDownloadJobs.get(jobId);
+    if (existing) return existing;
+    if (!/^[a-f0-9]{12}$/i.test(jobId)) return undefined;
+
+    const metaPath = getJobMetaPath(jobId);
+    try {
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as Partial<LectureDownloadJob>;
+        const fp =
+          meta.filePath && fs.existsSync(meta.filePath)
+            ? meta.filePath
+            : path.join(os.tmpdir(), `sc_lec_${jobId}.${meta.format === 'm4a' ? 'm4a' : 'mp4'}`);
+        if (fs.existsSync(fp)) {
+          const statSize = fs.statSync(fp).size;
+          const recovered: LectureDownloadJob = {
+            id: jobId,
+            title: String(meta.title || 'PW Lecture'),
+            qualityLabel: String(meta.qualityLabel || 'HD'),
+            format: meta.format === 'm4a' ? 'm4a' : 'mp4',
+            fileName: String(meta.fileName || `PW_Lecture.${meta.format === 'm4a' ? 'm4a' : 'mp4'}`),
+            filePath: fp,
+            status: 'ready',
+            percent: 100,
+            downloadedBytes: statSize,
+            totalDurationSecs: Number(meta.totalDurationSecs || 0),
+            processedSecs: Number(meta.processedSecs || 0),
+            createdAt: Number(meta.createdAt || fs.statSync(fp).mtimeMs),
+          };
+          lectureDownloadJobs.set(jobId, recovered);
+          return recovered;
+        }
+      }
+      for (const ext of ['mp4', 'm4a'] as const) {
+        const fp = path.join(os.tmpdir(), `sc_lec_${jobId}.${ext}`);
+        if (fs.existsSync(fp)) {
+          const st = fs.statSync(fp);
+          if (st.size > 1024) {
+            const recovered: LectureDownloadJob = {
+              id: jobId,
+              title: 'PW Lecture',
+              qualityLabel: ext === 'm4a' ? 'Audio' : 'HD',
+              format: ext,
+              fileName: `PW_Lecture_${jobId}.${ext}`,
+              filePath: fp,
+              status: 'ready',
+              percent: 100,
+              downloadedBytes: st.size,
+              totalDurationSecs: 0,
+              processedSecs: 0,
+              createdAt: st.mtimeMs,
+            };
+            lectureDownloadJobs.set(jobId, recovered);
+            return recovered;
+          }
+        }
+      }
+    } catch {
+      // ignore recovery failure
+    }
+    return undefined;
+  };
+
+  const cleanupJobFiles = (job: LectureDownloadJob | undefined) => {
+    if (!job) return;
+    try {
+      job.abortCtrl?.abort();
+    } catch {
+      // ignore
+    }
+    try {
+      job.proc?.kill('SIGTERM');
+    } catch {
+      // ignore
+    }
+    try {
+      if (job.filePath && fs.existsSync(job.filePath)) fs.unlinkSync(job.filePath);
+    } catch {
+      // ignore
+    }
+    try {
+      const metaPath = getJobMetaPath(job.id);
+      if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
+    } catch {
+      // ignore
+    }
+    try {
+      if (job.tempDir && fs.existsSync(job.tempDir)) {
+        fs.rmSync(job.tempDir, { recursive: true, force: true });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const cleanupOldDownloadJobs = () => {
     const now = Date.now();
     for (const [id, job] of lectureDownloadJobs.entries()) {
       const expired = now - job.createdAt > 20 * 60 * 1000;
       if (expired && job.status !== 'downloading' && job.status !== 'finalizing') {
-        try {
-          if (job.filePath && fs.existsSync(job.filePath)) fs.unlinkSync(job.filePath);
-        } catch {
-          // ignore
-        }
+        cleanupJobFiles(job);
         lectureDownloadJobs.delete(id);
       }
     }
@@ -2184,16 +2349,29 @@ export function createApiApp() {
       const oldest = lectureDownloadJobs.keys().next().value;
       if (!oldest) break;
       const oldJob = lectureDownloadJobs.get(oldest);
-      if (oldJob && oldJob.status !== 'downloading') {
-        try {
-          if (oldJob.filePath && fs.existsSync(oldJob.filePath)) fs.unlinkSync(oldJob.filePath);
-        } catch {
-          // ignore
-        }
+      if (oldJob && oldJob.status !== 'downloading' && oldJob.status !== 'finalizing') {
+        cleanupJobFiles(oldJob);
         lectureDownloadJobs.delete(oldest);
       } else {
         break;
       }
+    }
+    // Sweep orphaned /tmp/sc_lec_* and /tmp/sc_dl_* from previous runs older than 30 min
+    try {
+      const activeIds = new Set(lectureDownloadJobs.keys());
+      const entries = fs.readdirSync(os.tmpdir());
+      for (const name of entries) {
+        if (!name.startsWith('sc_lec_') && !name.startsWith('sc_dl_')) continue;
+        const matchedId = name.replace(/^sc_(?:lec|dl)_/, '').replace(/\.[^.]+$/, '');
+        if (activeIds.has(matchedId)) continue;
+        const full = path.join(os.tmpdir(), name);
+        const st = fs.statSync(full);
+        if (now - st.mtimeMs > 30 * 60 * 1000) {
+          fs.rmSync(full, { recursive: true, force: true });
+        }
+      }
+    } catch {
+      // ignore tmp sweep errors
     }
   };
 
@@ -2499,11 +2677,14 @@ export function createApiApp() {
 
     // Direct MP4 download path (no ffmpeg needed!)
     if (body.isDirectMp4 && format === 'mp4') {
+      const directAbort = new AbortController();
+      job.abortCtrl = directAbort;
       void (async () => {
         try {
           job.status = 'downloading';
           const up = await fetch(targetUrl, {
             headers: { 'User-Agent': USER_AGENT, Referer: 'https://vidcloud.eu.org/' },
+            signal: directAbort.signal,
           });
           if (!up.ok || !up.body) {
             throw new Error(`Upstream returned ${up.status}`);
@@ -2535,6 +2716,7 @@ export function createApiApp() {
           if ((job.status as string) !== 'cancelled') {
             job.percent = 100;
             job.status = 'ready';
+            persistReadyJobMeta(job);
           }
         } catch (err: any) {
           if ((job.status as string) !== 'cancelled') {
@@ -2547,146 +2729,527 @@ export function createApiApp() {
       return res.json({ success: true, jobId, fileName });
     }
 
-    // HLS -> lossless MP4 or Audio-only M4A via local hls-proxy + ffmpeg
-    const localProxyInput = `http://127.0.0.1:${PORT}/api/hls-proxy?url=${encodeURIComponent(targetUrl)}`;
-    const args =
-      format === 'm4a'
-        ? [
+    const runStreamingFfmpegFallback = (playlistUrl: string) => {
+      const localProxyInput = `http://127.0.0.1:${PORT}/api/hls-proxy?url=${encodeURIComponent(playlistUrl)}`;
+      const args =
+        format === 'm4a'
+          ? [
+              '-y',
+              '-allowed_extensions',
+              'ALL',
+              '-protocol_whitelist',
+              'file,http,https,tcp,tls,crypto',
+              '-i',
+              localProxyInput,
+              '-vn',
+              '-c:a',
+              'aac',
+              '-b:a',
+              '128k',
+              '-movflags',
+              '+faststart',
+              '-progress',
+              'pipe:1',
+              '-nostats',
+              filePath,
+            ]
+          : [
+              '-y',
+              '-allowed_extensions',
+              'ALL',
+              '-protocol_whitelist',
+              'file,http,https,tcp,tls,crypto',
+              '-i',
+              localProxyInput,
+              '-c',
+              'copy',
+              '-movflags',
+              '+faststart',
+              '-progress',
+              'pipe:1',
+              '-nostats',
+              filePath,
+            ];
+
+      const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      job.proc = proc;
+      job.status = 'downloading';
+
+      let stdoutBuf = '';
+      let stderrTail = '';
+
+      proc.stdout.on('data', (chunk: Buffer) => {
+        stdoutBuf += chunk.toString('utf8');
+        const lines = stdoutBuf.split('\n');
+        stdoutBuf = lines.pop() || '';
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          const eq = line.indexOf('=');
+          if (eq === -1) continue;
+          const k = line.slice(0, eq);
+          const v = line.slice(eq + 1);
+          if (k === 'out_time_us' || k === 'out_time_ms') {
+            const us = Number(v);
+            if (Number.isFinite(us) && us > 0) {
+              job.processedSecs = us / 1_000_000;
+              if (job.totalDurationSecs > 0) {
+                job.percent = Math.min(97, Math.round((job.processedSecs / job.totalDurationSecs) * 100));
+              }
+            }
+          } else if (k === 'total_size') {
+            const bytes = Number(v);
+            if (Number.isFinite(bytes) && bytes > 0) {
+              job.downloadedBytes = bytes;
+            }
+          } else if (k === 'progress' && v === 'end') {
+            job.status = 'finalizing';
+            job.percent = 98;
+          }
+        }
+      });
+
+      proc.stderr.on('data', (chunk: Buffer) => {
+        const txt = chunk.toString('utf8');
+        stderrTail = (stderrTail + txt).slice(-1200);
+        if (job.totalDurationSecs === 0) {
+          const dm = txt.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+          if (dm) {
+            const secs = Number(dm[1]) * 3600 + Number(dm[2]) * 60 + parseFloat(dm[3]);
+            if (Number.isFinite(secs) && secs > 0) {
+              job.totalDurationSecs = Math.round(secs);
+            }
+          }
+        }
+      });
+
+      proc.on('close', (code) => {
+        job.proc = undefined;
+        if ((job.status as string) === 'cancelled') {
+          cleanupJobFiles(job);
+          return;
+        }
+        if (code === 0 && fs.existsSync(filePath)) {
+          try {
+            job.downloadedBytes = fs.statSync(filePath).size;
+          } catch {
+            // ignore
+          }
+          if (job.downloadedBytes > 1024) {
+            job.percent = 100;
+            job.status = 'ready';
+            persistReadyJobMeta(job);
+            return;
+          }
+        }
+        job.status = 'error';
+        job.error = stderrTail.includes('403')
+          ? 'Stream link expired before download finished — tap Retry.'
+          : 'Could not convert this video stream cleanly.';
+        cleanupJobFiles(job);
+      });
+
+      proc.on('error', (err) => {
+        job.proc = undefined;
+        if ((job.status as string) !== 'cancelled') {
+          job.status = 'error';
+          job.error = err?.message || 'Downloader process error';
+        }
+      });
+    };
+
+    const runFfmpegPromise = (args: string[]): Promise<{ code: number; stderr: string }> => {
+      return new Promise((resolve, reject) => {
+        const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+        job.proc = proc;
+        let stderr = '';
+        proc.stderr.on('data', (c: Buffer) => {
+          stderr = (stderr + c.toString('utf8')).slice(-1200);
+        });
+        proc.on('close', (code) => {
+          job.proc = undefined;
+          resolve({ code: code ?? 1, stderr });
+        });
+        proc.on('error', (err) => {
+          job.proc = undefined;
+          reject(err);
+        });
+      });
+    };
+
+    // High-speed 20x Parallel HLS Downloader + AES-128 Decrypt + Local Disk Remux
+    const abortCtrl = new AbortController();
+    job.abortCtrl = abortCtrl;
+    job.status = 'downloading';
+    job.percent = 1;
+
+    void (async () => {
+      const fetchBytesWithRetry = async (url: string, attempts = 3): Promise<Buffer> => {
+        let lastErr: any;
+        for (let a = 0; a < attempts; a++) {
+          if ((job.status as string) === 'cancelled' || abortCtrl.signal.aborted) {
+            throw new Error('Cancelled');
+          }
+          try {
+            const timeoutSig = AbortSignal.timeout(15000);
+            const sig =
+              typeof AbortSignal.any === 'function'
+                ? AbortSignal.any([abortCtrl.signal, timeoutSig])
+                : abortCtrl.signal;
+            const resp = await fetch(url, {
+              headers: { 'User-Agent': USER_AGENT, Referer: 'https://vidcloud.eu.org/' },
+              signal: sig,
+            });
+            if (!resp.ok) {
+              throw new Error(`HTTP ${resp.status}`);
+            }
+            return Buffer.from(await resp.arrayBuffer());
+          } catch (err) {
+            lastErr = err;
+            if ((job.status as string) === 'cancelled' || abortCtrl.signal.aborted) {
+              throw new Error('Cancelled');
+            }
+            if (a < attempts - 1) {
+              await new Promise((r) => setTimeout(r, 250 * (a + 1)));
+            }
+          }
+        }
+        throw lastErr || new Error('Segment download failed');
+      };
+
+      try {
+        let playlistUrl = targetUrl;
+        let playlistText = (await fetchBytesWithRetry(playlistUrl, 2)).toString('utf8');
+
+        // If Master playlist slipped through, automatically pick best <=720p or first variant
+        if (playlistText.includes('#EXT-X-STREAM-INF') && !playlistText.includes('#EXTINF')) {
+          const mLines = playlistText.split(/\r?\n/).map((l) => l.trim());
+          const candidates: Array<{ height: number; url: string }> = [];
+          for (let i = 0; i < mLines.length; i++) {
+            if (!mLines[i].startsWith('#EXT-X-STREAM-INF')) continue;
+            const resMatch = mLines[i].match(/RESOLUTION=\d+x(\d+)/i);
+            const height = resMatch ? Number(resMatch[1]) : 0;
+            for (let j = i + 1; j < mLines.length; j++) {
+              if (mLines[j] && !mLines[j].startsWith('#')) {
+                candidates.push({ height, url: resolveAbsManifestUrl(mLines[j], playlistUrl) });
+                break;
+              }
+            }
+          }
+          const picked =
+            candidates.find((c) => c.height === 720) ||
+            candidates.find((c) => c.height === 480) ||
+            candidates[0];
+          if (picked?.url) {
+            playlistUrl = picked.url;
+            playlistText = (await fetchBytesWithRetry(playlistUrl, 2)).toString('utf8');
+          }
+        }
+
+        const parsedPlaylistUrl = new URL(playlistUrl);
+        const hlsIndex = parsedPlaylistUrl.pathname.indexOf('/hls/');
+        const cfRootPath =
+          hlsIndex !== -1
+            ? parsedPlaylistUrl.pathname.slice(0, hlsIndex + 1)
+            : parsedPlaylistUrl.pathname.replace(/[^/]+$/, '');
+        const cfRoot = `${parsedPlaylistUrl.origin}${cfRootPath}`;
+
+        type HlsKeyInfo = {
+          uri: string;
+          ivBuf: Buffer | null;
+        };
+        interface SegmentItem {
+          index: number;
+          seqNum: number;
+          url: string;
+          duration: number;
+          keyInfo: HlsKeyInfo | null;
+        }
+
+        let mediaSequence = 0;
+        let currentKey: HlsKeyInfo | null = null;
+        let unsupportedKey = false;
+        let mapUri: string | null = null;
+        const segments: SegmentItem[] = [];
+        let pendingDuration = 0;
+        let totalDur = 0;
+
+        const parseKeyAttributes = (line: string): HlsKeyInfo | null => {
+          const methodMatch = line.match(/METHOD=([A-Z0-9-]+)/i);
+          const method = (methodMatch?.[1] || '').toUpperCase();
+          if (method === 'NONE') return null;
+          if (method !== 'AES-128') {
+            unsupportedKey = true;
+            return null;
+          }
+          const uriMatch = line.match(/URI="([^"]+)"/i);
+          if (!uriMatch?.[1]) {
+            unsupportedKey = true;
+            return null;
+          }
+          const rawKeyUri = uriMatch[1];
+          const resolvedKeyUrl = rawKeyUri.includes('/get-hls-key')
+            ? resolveAbsManifestUrl(`${cfRoot}hls/enc.key`, playlistUrl)
+            : resolveAbsManifestUrl(rawKeyUri, playlistUrl);
+          let ivBuf: Buffer | null = null;
+          const ivMatch = line.match(/IV=0x([0-9a-fA-F]+)/i);
+          if (ivMatch?.[1]) {
+            const hex = ivMatch[1].padStart(32, '0').slice(-32);
+            ivBuf = Buffer.from(hex, 'hex');
+          }
+          return { uri: resolvedKeyUrl, ivBuf };
+        };
+
+        for (const rawLine of playlistText.split(/\r?\n/)) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+            const seq = parseInt(line.split(':')[1] || '0', 10);
+            if (Number.isFinite(seq)) mediaSequence = seq;
+            continue;
+          }
+          if (line.startsWith('#EXT-X-SESSION-KEY')) {
+            unsupportedKey = true;
+            break;
+          }
+          if (line.startsWith('#EXT-X-KEY')) {
+            currentKey = parseKeyAttributes(line);
+            if (unsupportedKey) break;
+            continue;
+          }
+          if (line.startsWith('#EXT-X-MAP')) {
+            const uriMatch = line.match(/URI="([^"]+)"/i);
+            if (uriMatch?.[1]) {
+              mapUri = resolveAbsManifestUrl(uriMatch[1], playlistUrl);
+            }
+            continue;
+          }
+          if (line.startsWith('#EXTINF:')) {
+            const sec = parseFloat(line.slice(8).split(',')[0] || '0');
+            pendingDuration = Number.isFinite(sec) ? sec : 0;
+            continue;
+          }
+          if (line.startsWith('#')) continue;
+
+          const idx = segments.length;
+          segments.push({
+            index: idx,
+            seqNum: mediaSequence + idx,
+            url: resolveAbsManifestUrl(line, playlistUrl),
+            duration: pendingDuration,
+            keyInfo: currentKey,
+          });
+          totalDur += pendingDuration;
+          pendingDuration = 0;
+        }
+
+        if (unsupportedKey || segments.length === 0 || playlistText.includes('#EXT-X-BYTERANGE')) {
+          runStreamingFfmpegFallback(playlistUrl);
+          return;
+        }
+
+        if (job.totalDurationSecs === 0 && totalDur > 0) {
+          job.totalDurationSecs = Math.round(totalDur);
+        }
+
+        const tempDir = path.join(os.tmpdir(), `sc_dl_${jobId}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        job.tempDir = tempDir;
+
+        // Fetch unique AES-128 keys once (1 request instead of 900!)
+        const keyPromiseMap = new Map<string, Promise<Buffer>>();
+        const getAesKeyBuffer = (uri: string): Promise<Buffer> => {
+          let p = keyPromiseMap.get(uri);
+          if (!p) {
+            p = fetchBytesWithRetry(uri, 3);
+            keyPromiseMap.set(uri, p);
+          }
+          return p;
+        };
+
+        // Fetch optional fMP4 init segment (#EXT-X-MAP)
+        let localMapFile = '';
+        if (mapUri) {
+          const initBuf = await fetchBytesWithRetry(mapUri, 3);
+          localMapFile = 'init.mp4';
+          fs.writeFileSync(path.join(tempDir, localMapFile), initBuf);
+        }
+
+        const segExt = mapUri ? 'm4s' : 'ts';
+        const segDurations = new Array<number>(segments.length).fill(0);
+        let nextIdx = 0;
+        let completedCount = 0;
+        const workerCount = Math.min(20, segments.length);
+
+        const downloadWorker = async () => {
+          while (true) {
+            if ((job.status as string) === 'cancelled' || abortCtrl.signal.aborted) {
+              return;
+            }
+            const i = nextIdx++;
+            if (i >= segments.length) return;
+            const seg = segments[i];
+            let buf = await fetchBytesWithRetry(seg.url, 3);
+            if (seg.keyInfo) {
+              const keyBuf = await getAesKeyBuffer(seg.keyInfo.uri);
+              const ivBuf =
+                seg.keyInfo.ivBuf ||
+                (() => {
+                  const b = Buffer.alloc(16, 0);
+                  b.writeUInt32BE(seg.seqNum >>> 0, 12);
+                  return b;
+                })();
+              const decipher = crypto.createDecipheriv('aes-128-cbc', keyBuf, ivBuf);
+              buf = Buffer.concat([decipher.update(buf), decipher.final()]);
+            }
+            const segFileName = `seg_${String(seg.index).padStart(5, '0')}.${segExt}`;
+            fs.writeFileSync(path.join(tempDir, segFileName), buf);
+            segDurations[seg.index] = seg.duration;
+            completedCount++;
+            job.downloadedBytes += buf.length;
+            job.processedSecs += seg.duration;
+            if ((job.status as string) !== 'cancelled') {
+              job.percent = Math.min(93, Math.max(2, Math.round((completedCount / segments.length) * 93)));
+            }
+          }
+        };
+
+        await Promise.all(Array.from({ length: workerCount }, () => downloadWorker()));
+
+        if ((job.status as string) === 'cancelled' || abortCtrl.signal.aborted) {
+          cleanupJobFiles(job);
+          return;
+        }
+
+        job.status = 'finalizing';
+        job.percent = 95;
+
+        // Build clean local playlist (no encryption, local relative files -> instant ffmpeg remux!)
+        const localLines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:15', '#EXT-X-MEDIA-SEQUENCE:0'];
+        if (localMapFile) {
+          localLines.push(`#EXT-X-MAP:URI="${localMapFile}"`);
+        }
+        for (let i = 0; i < segments.length; i++) {
+          const dur = segDurations[i] > 0 ? segDurations[i].toFixed(3) : '6.000';
+          localLines.push(`#EXTINF:${dur},`);
+          localLines.push(`seg_${String(i).padStart(5, '0')}.${segExt}`);
+        }
+        localLines.push('#EXT-X-ENDLIST');
+        const localM3u8Path = path.join(tempDir, 'local.m3u8');
+        fs.writeFileSync(localM3u8Path, localLines.join('\n'), 'utf8');
+
+        if (format === 'm4a') {
+          let remuxRes = await runFfmpegPromise([
             '-y',
             '-allowed_extensions',
             'ALL',
-            '-protocol_whitelist',
-            'file,http,https,tcp,tls,crypto',
             '-i',
-            localProxyInput,
+            localM3u8Path,
             '-vn',
             '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
+            'copy',
             '-movflags',
             '+faststart',
-            '-progress',
-            'pipe:1',
-            '-nostats',
             filePath,
-          ]
-        : [
+          ]);
+          if (remuxRes.code !== 0 && (job.status as string) !== 'cancelled') {
+            remuxRes = await runFfmpegPromise([
+              '-y',
+              '-allowed_extensions',
+              'ALL',
+              '-i',
+              localM3u8Path,
+              '-vn',
+              '-c:a',
+              'aac',
+              '-b:a',
+              '128k',
+              '-movflags',
+              '+faststart',
+              filePath,
+            ]);
+          }
+          if (remuxRes.code !== 0) {
+            throw new Error(remuxRes.stderr || 'Audio conversion failed');
+          }
+        } else {
+          let remuxRes = await runFfmpegPromise([
             '-y',
             '-allowed_extensions',
             'ALL',
-            '-protocol_whitelist',
-            'file,http,https,tcp,tls,crypto',
             '-i',
-            localProxyInput,
+            localM3u8Path,
             '-c',
             'copy',
             '-movflags',
             '+faststart',
-            '-progress',
-            'pipe:1',
-            '-nostats',
             filePath,
-          ];
-
-    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    job.proc = proc;
-    job.status = 'downloading';
-
-    let stdoutBuf = '';
-    let stderrTail = '';
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdoutBuf += chunk.toString('utf8');
-      const lines = stdoutBuf.split('\n');
-      stdoutBuf = lines.pop() || '';
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line) continue;
-        const eq = line.indexOf('=');
-        if (eq === -1) continue;
-        const k = line.slice(0, eq);
-        const v = line.slice(eq + 1);
-        if (k === 'out_time_us' || k === 'out_time_ms') {
-          const us = Number(v);
-          if (Number.isFinite(us) && us > 0) {
-            job.processedSecs = us / 1_000_000;
-            if (job.totalDurationSecs > 0) {
-              job.percent = Math.min(97, Math.round((job.processedSecs / job.totalDurationSecs) * 100));
-            }
+          ]);
+          if (remuxRes.code !== 0 && (job.status as string) !== 'cancelled') {
+            remuxRes = await runFfmpegPromise([
+              '-y',
+              '-allowed_extensions',
+              'ALL',
+              '-i',
+              localM3u8Path,
+              '-c:v',
+              'copy',
+              '-c:a',
+              'aac',
+              '-b:a',
+              '128k',
+              '-movflags',
+              '+faststart',
+              filePath,
+            ]);
           }
-        } else if (k === 'total_size') {
-          const bytes = Number(v);
-          if (Number.isFinite(bytes) && bytes > 0) {
-            job.downloadedBytes = bytes;
-          }
-        } else if (k === 'progress' && v === 'end') {
-          job.status = 'finalizing';
-          job.percent = 98;
-        }
-      }
-    });
-
-    proc.stderr.on('data', (chunk: Buffer) => {
-      const txt = chunk.toString('utf8');
-      stderrTail = (stderrTail + txt).slice(-1200);
-      if (job.totalDurationSecs === 0) {
-        const dm = txt.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-        if (dm) {
-          const secs = Number(dm[1]) * 3600 + Number(dm[2]) * 60 + parseFloat(dm[3]);
-          if (Number.isFinite(secs) && secs > 0) {
-            job.totalDurationSecs = Math.round(secs);
+          if (remuxRes.code !== 0) {
+            throw new Error(remuxRes.stderr || 'MP4 remux failed');
           }
         }
-      }
-    });
 
-    proc.on('close', (code) => {
-      job.proc = undefined;
-      if (job.status === 'cancelled') {
         try {
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          job.tempDir = undefined;
         } catch {
-          // ignore
+          // ignore cleanup failure
         }
-        return;
-      }
-      if (code === 0 && fs.existsSync(filePath)) {
-        try {
-          job.downloadedBytes = fs.statSync(filePath).size;
-        } catch {
-          // ignore
-        }
-        if (job.downloadedBytes > 1024) {
-          job.percent = 100;
-          job.status = 'ready';
+
+        if ((job.status as string) === 'cancelled') {
+          cleanupJobFiles(job);
           return;
         }
-      }
-      job.status = 'error';
-      job.error = stderrTail.includes('403')
-        ? 'Stream link expired before download finished — tap Retry.'
-        : 'Could not convert this video stream cleanly.';
-      try {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      } catch {
-        // ignore
-      }
-    });
 
-    proc.on('error', (err) => {
-      job.proc = undefined;
-      if (job.status !== 'cancelled') {
+        if (fs.existsSync(filePath)) {
+          const statSize = fs.statSync(filePath).size;
+          if (statSize > 1024) {
+            job.downloadedBytes = statSize;
+            job.percent = 100;
+            job.status = 'ready';
+            persistReadyJobMeta(job);
+            return;
+          }
+        }
+        throw new Error('Generated media file was empty.');
+      } catch (err: any) {
+        if ((job.status as string) === 'cancelled' || abortCtrl.signal.aborted) {
+          cleanupJobFiles(job);
+          return;
+        }
         job.status = 'error';
-        job.error = err?.message || 'Downloader process error';
+        const msg = String(err?.message || '');
+        job.error = msg.includes('403')
+          ? 'Video link expire ho gaya — Retry dabakar fir se download karein.'
+          : msg || 'Download complete nahi ho paya — Retry karein.';
+        cleanupJobFiles(job);
       }
-    });
+    })();
 
     return res.json({ success: true, jobId, fileName });
   });
 
   app.get('/api/lecture-download/status/:jobId', (req, res) => {
-    const job = lectureDownloadJobs.get(req.params.jobId);
+    const job = resolveDownloadJob(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, message: 'Download job not found' });
     }
@@ -2706,34 +3269,60 @@ export function createApiApp() {
     });
   });
 
+  // Chunked binary endpoint (<= 8MB per request so large HD videos never hit Cloud Run's 32MB response cap!)
+  app.get('/api/lecture-download/chunk/:jobId', (req, res) => {
+    const job = resolveDownloadJob(req.params.jobId);
+    if (!job || job.status !== 'ready' || !fs.existsSync(job.filePath)) {
+      return res.status(404).send('Downloaded file not ready or expired');
+    }
+    const statSize = fs.statSync(job.filePath).size;
+    const rawOffset = Number(req.query.offset ?? 0);
+    const rawLen = Number(req.query.length ?? 6 * 1024 * 1024);
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+    const maxChunk = 8 * 1024 * 1024;
+    const requestedLen =
+      Number.isFinite(rawLen) && rawLen > 0 ? Math.min(maxChunk, Math.floor(rawLen)) : 6 * 1024 * 1024;
+
+    if (offset >= statSize) {
+      return res.status(416).send('Offset out of range');
+    }
+
+    const endByte = Math.min(statSize - 1, offset + requestedLen - 1);
+    const chunkBytes = endByte - offset + 1;
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', String(chunkBytes));
+    res.setHeader('X-Total-Bytes', String(statSize));
+    res.setHeader('X-Chunk-Offset', String(offset));
+    res.setHeader('Cache-Control', 'no-store');
+
+    const stream = fs.createReadStream(job.filePath, { start: offset, end: endByte });
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(500).end();
+    });
+    return stream.pipe(res);
+  });
+
   app.get('/api/lecture-download/file/:jobId', (req, res) => {
-    const job = lectureDownloadJobs.get(req.params.jobId);
+    const job = resolveDownloadJob(req.params.jobId);
     if (!job || job.status !== 'ready' || !fs.existsSync(job.filePath)) {
       return res.status(404).send('Downloaded file not ready or expired');
     }
     res.setHeader('Content-Type', job.format === 'm4a' ? 'audio/mp4' : 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${job.fileName.replace(/"/g, '')}"`
+      buildSafeContentDisposition('attachment', job.fileName, job.format)
     );
     return res.sendFile(job.filePath);
   });
 
   app.delete('/api/lecture-download/:jobId', (req, res) => {
-    const job = lectureDownloadJobs.get(req.params.jobId);
+    const job = resolveDownloadJob(req.params.jobId);
     if (job) {
       job.status = 'cancelled';
-      try {
-        job.proc?.kill('SIGTERM');
-      } catch {
-        // ignore
-      }
-      try {
-        if (job.filePath && fs.existsSync(job.filePath)) fs.unlinkSync(job.filePath);
-      } catch {
-        // ignore
-      }
-      lectureDownloadJobs.delete(req.params.jobId);
+      cleanupJobFiles(job);
+      lectureDownloadJobs.delete(job.id);
     }
     return res.json({ success: true });
   });
@@ -4732,12 +5321,71 @@ export function createApiApp() {
     }
   });
 
+  const resolvePublicOrigin = (req: express.Request): string => {
+    const xfProto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https')
+      .split(',')[0]
+      .trim();
+    const xfHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim();
+    if (xfHost) {
+      return `${xfProto || 'https'}://${xfHost}`;
+    }
+    return String(process.env.APP_URL || `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
+  };
+
+  app.get('/robots.txt', (req, res) => {
+    const origin = resolvePublicOrigin(req);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(
+      `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${origin}/sitemap.xml\n`
+    );
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const origin = resolvePublicOrigin(req);
+    const today = new Date().toISOString().slice(0, 10);
+    const urls = [
+      { loc: `${origin}/`, priority: '1.0', changefreq: 'daily' },
+      { loc: `${origin}/?tab=batches`, priority: '0.9', changefreq: 'daily' },
+      { loc: `${origin}/?tab=khazana`, priority: '0.9', changefreq: 'daily' },
+      { loc: `${origin}/?tab=pi`, priority: '0.8', changefreq: 'daily' },
+      { loc: `${origin}/?tab=test`, priority: '0.8', changefreq: 'daily' },
+      { loc: `${origin}/?tab=community`, priority: '0.7', changefreq: 'daily' },
+      { loc: `${origin}/?tab=downloads`, priority: '0.7', changefreq: 'weekly' },
+      { loc: `${origin}/?tab=ai`, priority: '0.8', changefreq: 'weekly' },
+    ];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
+      .map(
+        (u) =>
+          `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+      )
+      .join('\n')}\n</urlset>\n`;
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(xml);
+  });
+
   return app;
 }
 
 async function startServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
+
+  const applySeoOrigin = (html: string, req: express.Request): string => {
+    const xfProto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https')
+      .split(',')[0]
+      .trim();
+    const xfHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim();
+    const origin = xfHost
+      ? `${xfProto || 'https'}://${xfHost}`
+      : String(process.env.APP_URL || `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
+    return html.replace(/__ORIGIN__/g, origin);
+  };
 
   // Vite dev middleware or static dist
   if (process.env.NODE_ENV !== 'production') {
@@ -4751,12 +5399,29 @@ async function startServer() {
       },
       appType: 'spa',
     });
+    app.get('/', async (req, res, next) => {
+      try {
+        const rawHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        const transformed = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.end(applySeoOrigin(transformed, req));
+      } catch (err) {
+        return next(err);
+      }
+    });
     app.use(vite.middlewares);
   } else {
     const distDir = path.join(__dirname, 'dist');
-    app.use(express.static(distDir));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distDir, 'index.html'));
+    app.use(express.static(distDir, { index: false }));
+    app.get('*', (req, res) => {
+      const htmlPath = path.join(distDir, 'index.html');
+      try {
+        const rawHtml = fs.readFileSync(htmlPath, 'utf8');
+        res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.end(applySeoOrigin(rawHtml, req));
+      } catch {
+        return res.sendFile(htmlPath);
+      }
     });
   }
 

@@ -146,13 +146,14 @@ export function canShareMediaFiles(): boolean {
  */
 export async function exportMediaToDeviceGallery(params: {
   blob?: Blob | null;
+  blobUrl?: string | null;
   fallbackUrl?: string;
   fileName: string;
   mimeType: string;
   title?: string;
   forceShareSheet?: boolean;
 }): Promise<'shared' | 'downloaded'> {
-  const { blob, fallbackUrl, fileName, mimeType, title, forceShareSheet } = params;
+  const { blob, blobUrl, fallbackUrl, fileName, mimeType, title, forceShareSheet } = params;
 
   if (blob && (forceShareSheet || isMobileIosBrowser()) && canShareMediaFiles()) {
     try {
@@ -166,15 +167,18 @@ export async function exportMediaToDeviceGallery(params: {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') return 'shared';
-      // Fall through to standard <a download> below
+      // Fall through to local blob <a download> below
     }
   }
 
-  let href = fallbackUrl || '';
-  let revokeUrl: string | null = null;
-  if (blob) {
-    revokeUrl = URL.createObjectURL(blob);
-    href = revokeUrl;
+  let href = blobUrl || '';
+  let ownedRevokeUrl: string | null = null;
+  if (!href && blob) {
+    ownedRevokeUrl = URL.createObjectURL(blob);
+    href = ownedRevokeUrl;
+  }
+  if (!href && fallbackUrl && fallbackUrl.startsWith('blob:')) {
+    href = fallbackUrl;
   }
 
   if (href) {
@@ -186,8 +190,8 @@ export async function exportMediaToDeviceGallery(params: {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    if (revokeUrl) {
-      window.setTimeout(() => URL.revokeObjectURL(revokeUrl!), 45000);
+    if (ownedRevokeUrl) {
+      window.setTimeout(() => URL.revokeObjectURL(ownedRevokeUrl!), 60000);
     }
   }
 
