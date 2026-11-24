@@ -26,6 +26,7 @@ export interface BatchSubject {
     lastName?: string;
     imageId?: { baseUrl?: string; key?: string };
   }>;
+  fileId?: BatchAttachmentItem | null;
   lectureCount?: number;
   tagCount?: number;
 }

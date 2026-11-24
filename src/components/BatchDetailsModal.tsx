@@ -20,6 +20,7 @@ import {
   Layers,
   Video,
   Download,
+  Bell,
   Compass,
   Flame,
   Trophy,
@@ -28,13 +29,9 @@ import {
   Radio,
   Eye,
   Sparkles,
-  Gem,
-  ClipboardCheck,
-  Users,
 } from 'lucide-react';
 import {
   AdventureState,
-  BatchExerciseItem,
   BatchItem,
   BatchSubject,
   BatchTopic,
@@ -47,23 +44,14 @@ import {
   buildPdfProxyUrl,
   downloadPdfFile,
   fetchBatchDetails,
-  fetchPwBatchQuizzes,
   fetchSubjectTopics,
   fetchTodaySchedule,
   fetchTopicContents,
   fetchWeeklySchedule,
-  prefetchSubjectTopics,
-  prefetchVideoStream,
   resolveAttachmentUrl,
-  startPwQuiz,
 } from '../services/batchService';
 import { getAdventureMetrics, isLectureCompleted } from '../services/adventureService';
-import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 import { StudyAiPanel } from './StudyAiPanel';
-import { KhazanaExplorer } from './KhazanaExplorer';
-import { BatchTestsPanel } from './BatchTestsPanel';
-import { BatchCommunityPanel } from './BatchCommunityPanel';
-import { SubjectIconBadge } from './SubjectIconBadge';
 
 export interface PlayLecturePayload {
   batchId: string;
@@ -76,7 +64,6 @@ export interface PlayLecturePayload {
   videoId: string;
   findKey?: string;
   videoDetailsId?: string;
-  parentScheduleId?: string;
   typeId?: string;
   title: string;
   videoImg?: string;
@@ -84,8 +71,6 @@ export interface PlayLecturePayload {
   playType: string;
   rawVideoUrl?: string;
   durationText?: string;
-  isLive?: boolean;
-  urlType?: string;
 }
 
 interface BatchDetailsModalProps {
@@ -150,39 +135,14 @@ function formatTimeRangeIst(startIso?: string, endIso?: string): string {
     if (!Number.isFinite(ts)) return '';
     return new Date(ts).toLocaleTimeString('en-IN', {
       timeZone: 'Asia/Kolkata',
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
       hour12: true,
     });
   };
   const s = fmt(startIso);
   const e = endIso ? fmt(endIso) : '';
-  return e ? `${s} – ${e}` : s;
-}
-
-function formatRelativeClassTime(startIso?: string, endIso?: string): string {
-  const startTs = startIso ? Date.parse(startIso) : NaN;
-  const endTs = endIso ? Date.parse(endIso) : NaN;
-  if (!Number.isFinite(startTs)) return 'Today';
-  const now = Date.now();
-  const diffMins = Math.round((now - startTs) / 60000);
-  if (diffMins < -60) {
-    const h = Math.round(Math.abs(diffMins) / 60);
-    return `in ${h}h`;
-  }
-  if (diffMins < 0) {
-    return `in ${Math.abs(diffMins)}m`;
-  }
-  if (Number.isFinite(endTs) && now > endTs) {
-    const agoEnd = Math.round((now - endTs) / 60000);
-    if (agoEnd < 60) return `${Math.max(1, agoEnd)}m ago`;
-    const h = Math.floor(agoEnd / 60);
-    return `${h}h ago`;
-  }
-  if (diffMins < 60) {
-    return `${Math.max(1, diffMins)}m ago`;
-  }
-  return `${Math.floor(diffMins / 60)}h ago`;
+  return e ? `${s} - ${e}` : s;
 }
 
 export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
@@ -197,7 +157,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   onPlayLecture,
   onSelectSubBatch,
 }) => {
-  const [activeTopTab, setActiveTopTab] = useState<'subjects' | 'tests' | 'khazana' | 'community' | 'schedule'>('subjects');
+  const [activeTopTab, setActiveTopTab] = useState<'subjects' | 'schedule' | 'announcements'>('subjects');
 
   // Step 1: Batch details & Subjects
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -205,7 +165,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   const [subjects, setSubjects] = useState<BatchSubject[]>([]);
   const [mahapackBatches, setMahapackBatches] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [khazanaProgramId, setKhazanaProgramId] = useState<string | null>(null);
 
   // Today's classes & Weekly Schedule state
   const todayStr = getIstTodayStr();
@@ -218,8 +177,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   const [weeklyError, setWeeklyError] = useState<string | null>(null);
   const [scheduleSubjectFilter, setScheduleSubjectFilter] = useState<string>('all');
   const [scheduleNoticeMsg, setScheduleNoticeMsg] = useState<string | null>(null);
-  const [todayScrollPct, setTodayScrollPct] = useState(32);
-  const [failedTeacherImgs, setFailedTeacherImgs] = useState<Record<string, boolean>>({});
 
   // Step 2: Selected Subject -> Topics
   const [selectedSubject, setSelectedSubject] = useState<BatchSubject | null>(null);
@@ -227,27 +184,17 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   const [topics, setTopics] = useState<BatchTopic[]>([]);
   const [topicsPage, setTopicsPage] = useState(1);
   const [hasMoreTopics, setHasMoreTopics] = useState(false);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
 
-  // Step 3: Selected Topic -> Contents (videos, notes, DppNotes, DppVideos, exercises/DHA)
+  // Step 3: Selected Topic -> Contents (videos, notes, DppNotes, DppVideos)
   const [selectedTopic, setSelectedTopic] = useState<BatchTopic | null>(null);
-  const [contentTab, setContentTab] = useState<'videos' | 'notes' | 'DppNotes' | 'DppVideos' | 'exercises'>('videos');
+  const [contentTab, setContentTab] = useState<'videos' | 'notes' | 'DppNotes' | 'DppVideos'>('videos');
   const [loadingContents, setLoadingContents] = useState(false);
   const [videos, setVideos] = useState<BatchVideoItem[]>([]);
   const [notes, setNotes] = useState<BatchNoteItem[]>([]);
   const [dppNotes, setDppNotes] = useState<BatchNoteItem[]>([]);
   const [dppVideos, setDppVideos] = useState<BatchVideoItem[]>([]);
-  const [exercises, setExercises] = useState<BatchExerciseItem[]>([]);
   const [contentsError, setContentsError] = useState<string | null>(null);
-
-  // Inline DHA Quiz CBT Overlay inside Batch Modal
-  const [dhaQuizModal, setDhaQuizModal] = useState<{
-    title: string;
-    questions: Array<{ question: string; options: string[]; correctIndex: number; explanation: string; topic?: string }>;
-  } | null>(null);
-  const [launchingDhaId, setLaunchingDhaId] = useState<string | null>(null);
-  const [dhaIdx, setDhaIdx] = useState(0);
-  const [dhaAnswers, setDhaAnswers] = useState<Record<number, number>>({});
-  const [dhaSubmitted, setDhaSubmitted] = useState(false);
 
   // PDF Download indicator state
   const [downloadingPdfKey, setDownloadingPdfKey] = useState<string | null>(null);
@@ -256,13 +203,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
   const [copied, setCopied] = useState(false);
   const [showAiDrawer, setShowAiDrawer] = useState(false);
-  const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
-  const hoverVideoTimerRef = React.useRef<number | null>(null);
-
-  const handleOpenAiWithPrompt = (prompt: string) => {
-    setAiInitialPrompt(prompt);
-    setShowAiDrawer(true);
-  };
 
   // Lock background page scroll while full-screen batch view is open
   useEffect(() => {
@@ -295,8 +235,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setNotes([]);
     setDppNotes([]);
     setDppVideos([]);
-    setExercises([]);
-    setDhaQuizModal(null);
     setActiveTopTab('subjects');
     setSelectedScheduleDate(getIstTodayStr());
     setScheduleSubjectFilter('all');
@@ -305,29 +243,14 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setScheduleNoticeMsg(null);
     setPdfDownloadError(null);
     setShowAiDrawer(false);
-    setAiInitialPrompt(null);
-    setKhazanaProgramId(null);
-    setFailedTeacherImgs({});
-    setTodayScrollPct(32);
 
     setLoadingDetails(true);
     setDetailsError(null);
     fetchBatchDetails(batch.batch_id)
       .then((res) => {
-        const subjList = res.subjects || [];
-        setSubjects(subjList);
+        setSubjects(res.subjects || []);
         setMahapackBatches(res.mahapackBatches || []);
         setAnnouncements(res.announcements || []);
-        setKhazanaProgramId(res.khazanaProgramId || res.batch?.khazanaProgramId || null);
-
-        // Background prefetch: first 2 academic subjects' chapters & batch tests
-        const acadSubjs = subjList.filter(
-          (s) => (s.slug || s._id) && !/notice|guidance|orientation|planner/i.test(String(s.subject || ''))
-        );
-        for (const s of acadSubjs.slice(0, 2)) {
-          prefetchSubjectTopics(batch.batch_id, s.slug || s._id);
-        }
-        void fetchPwBatchQuizzes(batch.batch_id).catch(() => {});
       })
       .catch((err) => {
         setDetailsError(err.message || 'Could not load batch subjects.');
@@ -381,6 +304,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setSelectedTopic(null);
     setTopics([]);
     setTopicsPage(1);
+    setTopicsError(null);
     setLoadingTopics(true);
     try {
       const slugOrId = subj.slug || subj._id;
@@ -388,7 +312,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       setTopics(res.topics || []);
       setHasMoreTopics((res.topics || []).length >= 20);
     } catch (err: any) {
-      setDetailsError(err.message || 'Failed to load chapters');
+      setTopicsError(err?.message || 'Failed to load chapters');
     } finally {
       setLoadingTopics(false);
     }
@@ -402,7 +326,17 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       const slugOrId = selectedSubject.slug || selectedSubject._id;
       const res = await fetchSubjectTopics(batch.batch_id, slugOrId, nextPage);
       const nextList = res.topics || [];
-      setTopics((prev) => [...prev, ...nextList]);
+      setTopics((prev) => {
+        const seen = new Set(prev.map((t) => t._id));
+        const merged = [...prev];
+        for (const t of nextList) {
+          if (t?._id && !seen.has(t._id)) {
+            seen.add(t._id);
+            merged.push(t);
+          }
+        }
+        return merged;
+      });
       setTopicsPage(nextPage);
       setHasMoreTopics(nextList.length >= 20);
     } catch {
@@ -415,14 +349,11 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   // Load contents when topic or contentTab changes
   const loadTopicTab = async (
     topic: BatchTopic,
-    tab: 'videos' | 'notes' | 'DppNotes' | 'DppVideos' | 'exercises',
-    silent = false
+    tab: 'videos' | 'notes' | 'DppNotes' | 'DppVideos'
   ) => {
     if (!batch || !selectedSubject) return;
-    if (!silent) {
-      setLoadingContents(true);
-      setContentsError(null);
-    }
+    setLoadingContents(true);
+    setContentsError(null);
     try {
       const slugOrId = selectedSubject.slug || selectedSubject._id;
       const res = await fetchTopicContents(batch.batch_id, slugOrId, topic._id, tab, 1);
@@ -431,11 +362,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       if (tab === 'notes') setNotes(items as BatchNoteItem[]);
       if (tab === 'DppNotes') setDppNotes(items as BatchNoteItem[]);
       if (tab === 'DppVideos') setDppVideos(items as BatchVideoItem[]);
-      if (tab === 'exercises') setExercises(items as BatchExerciseItem[]);
     } catch (err: any) {
-      if (!silent) setContentsError(err.message || 'Could not load chapter materials.');
+      setContentsError(err?.message || 'Could not load chapter materials.');
     } finally {
-      if (!silent) setLoadingContents(false);
+      setLoadingContents(false);
     }
   };
 
@@ -448,50 +378,16 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setNotes([]);
     setDppNotes([]);
     setDppVideos([]);
-    setExercises([]);
     loadTopicTab(topic, defaultTab);
-    // Preload chapter DHA PDFs, DHA MCQ quizzes & DPP solution videos in background so every lecture card displays its DHA!
-    void loadTopicTab(topic, 'DppNotes', true);
-    void loadTopicTab(topic, 'exercises', true);
-    void loadTopicTab(topic, 'DppVideos', true);
   };
 
-  const handleSwitchContentTab = (tab: 'videos' | 'notes' | 'DppNotes' | 'DppVideos' | 'exercises') => {
+  const handleSwitchContentTab = (tab: 'videos' | 'notes' | 'DppNotes' | 'DppVideos') => {
     setContentTab(tab);
     if (!selectedTopic) return;
     if (tab === 'videos' && videos.length === 0) loadTopicTab(selectedTopic, 'videos');
     if (tab === 'notes' && notes.length === 0) loadTopicTab(selectedTopic, 'notes');
     if (tab === 'DppNotes' && dppNotes.length === 0) loadTopicTab(selectedTopic, 'DppNotes');
     if (tab === 'DppVideos' && dppVideos.length === 0) loadTopicTab(selectedTopic, 'DppVideos');
-    if (tab === 'exercises' && exercises.length === 0) loadTopicTab(selectedTopic, 'exercises');
-  };
-
-  const handleLaunchDhaQuiz = async (
-    quizId: string,
-    exerciseId: string,
-    quizTitle: string,
-    totalQs = 10
-  ) => {
-    if (!batch || launchingDhaId) return;
-    setLaunchingDhaId(quizId);
-    try {
-      const res = await startPwQuiz({
-        exerciseId,
-        batchName: batch.name,
-        subjectName: selectedSubject?.subject || 'Subject',
-        topicName: selectedTopic?.name || 'Chapter DHA',
-        title: quizTitle,
-        count: Math.min(10, Math.max(5, totalQs || 8)),
-      });
-      setDhaQuizModal({ title: quizTitle, questions: res.questions });
-      setDhaIdx(0);
-      setDhaAnswers({});
-      setDhaSubmitted(false);
-    } catch (err: any) {
-      setPdfDownloadError(err?.message || 'Unable to launch this DHA quiz right now.');
-    } finally {
-      setLaunchingDhaId(null);
-    }
   };
 
   if (!batch) return null;
@@ -554,12 +450,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   };
 
   const handlePlayScheduledClass = (cls: ScheduledClassItem) => {
-    if (cls.isCancelled) {
-      setScheduleNoticeMsg(
-        `${cls.subjectName || 'Class'}: ${cls.topic || 'This class was cancelled.'}`
-      );
-      return;
-    }
     if (cls.liveStatus === 'UPCOMING') {
       setScheduleNoticeMsg(
         `${cls.topic} (${cls.subjectName || 'Class'}) starts at ${formatTimeRangeIst(cls.startTime, cls.endTime)} IST.`
@@ -568,15 +458,8 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     }
     setScheduleNoticeMsg(null);
     const urlType = (cls.urlType || '').toLowerCase();
-    const rawUrl =
-      cls.ytStreamUrl ||
-      cls.newCdnLink ||
-      cls.videoDetails?.embedCode ||
-      cls.videoDetails?.hls_url ||
-      cls.videoDetails?.videoUrl ||
-      cls.url ||
-      '';
-    const isYt = urlType === 'youtube' || /youtu\.?be/i.test(rawUrl);
+    const isYt = urlType === 'youtube';
+    const rawUrl = cls.videoDetails?.embedCode || cls.videoDetails?.videoUrl || cls.url || '';
     const subjSlug = cls.subjectSlug || cls.batchSubjectId || 'subject';
     const topicId = cls.topicId || cls.tags?.[0]?._id || cls._id;
     onPlayLecture({
@@ -589,7 +472,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       videoId: cls._id,
       findKey: cls.videoDetails?.findKey,
       videoDetailsId: cls.videoDetails?.id || cls.videoDetails?._id,
-      parentScheduleId: cls.parentScheduleId,
       typeId: cls.typeId,
       title: cls.topic || cls.videoDetails?.name || 'Scheduled Lecture',
       videoImg: cls.videoDetails?.image || '',
@@ -597,10 +479,26 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       playType: cls.isDPPVideos ? 'solutions' : 'Lecture',
       rawVideoUrl: rawUrl,
       durationText: cls.videoDetails?.duration,
-      isLive: cls.liveStatus === 'LIVE',
-      urlType: cls.urlType,
     });
   };
+
+  const renderContentsErrorCard = () => (
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+      <AlertCircle className="h-7 w-7 text-red-400" />
+      <p className="text-sm text-red-300 max-w-md">{contentsError}</p>
+      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+        {selectedTopic && (
+          <button
+            type="button"
+            onClick={() => loadTopicTab(selectedTopic, contentTab)}
+            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   const renderPdfList = (list: BatchNoteItem[], emptyMsg: string) => {
     if (loadingContents) {
@@ -610,6 +508,9 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
           <span>Loading PDF materials...</span>
         </div>
       );
+    }
+    if (contentsError) {
+      return renderContentsErrorCard();
     }
     if (list.length === 0) {
       return (
@@ -625,10 +526,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
             {pdfDownloadError}
           </div>
         )}
-        {list.map((noteItem) =>
-          (noteItem.homeworkIds || []).map((hw) =>
-            (hw.attachmentIds || []).map((att) => {
-              const itemKey = `${hw._id}-${att._id}`;
+        {list.map((noteItem, nIdx) =>
+          (noteItem.homeworkIds || []).map((hw, hIdx) =>
+            (hw.attachmentIds || []).map((att, aIdx) => {
+              const itemKey = `${noteItem._id || nIdx}-${hw._id || hIdx}-${att._id || aIdx}`;
               const directUrl = resolveAttachmentUrl(att);
               const fileName = att.name || hw.topic || noteItem.topic || 'Study Notes.pdf';
               const viewUrl = directUrl ? buildPdfProxyUrl(directUrl, fileName, false) : '';
@@ -694,135 +595,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     );
   };
 
-  const extractLecNum = (text: string): string | null => {
-    const m =
-      text.match(/(?:lec|lecture|class|l)\s*[-#:]?\s*0*(\d+)/i) ||
-      text.match(/\b0*(\d{1,2})\s*:/);
-    return m ? m[1] : null;
-  };
-
-  const matchLectureDhaNote = (vid: BatchVideoItem) => {
-    const title = vid.topic || vid.videoDetails?.name || '';
-    const lecNum = extractLecNum(title);
-    const vidDate = vid.date ? vid.date.slice(0, 10) : '';
-    for (const dn of dppNotes) {
-      const dnDate = dn.date ? dn.date.slice(0, 10) : '';
-      for (const hw of dn.homeworkIds || []) {
-        const hwTopic = hw.topic || dn.topic || '';
-        const ofLecMatch = hwTopic.match(/of\s*lec(?:ture)?\s*0*(\d+)/i);
-        if (lecNum && ofLecMatch && ofLecMatch[1] === lecNum) {
-          const att = hw.attachmentIds?.[0];
-          const url = att ? resolveAttachmentUrl(att) : '';
-          if (url) return { title: hwTopic, url, name: att?.name || `${hwTopic}.pdf` };
-        }
-        if (vidDate && dnDate && vidDate === dnDate) {
-          const att = hw.attachmentIds?.[0];
-          const url = att ? resolveAttachmentUrl(att) : '';
-          if (url) return { title: hwTopic, url, name: att?.name || `${hwTopic}.pdf` };
-        }
-      }
-    }
-    return null;
-  };
-
-  const matchLectureDhaQuiz = (vid: BatchVideoItem) => {
-    const title = vid.topic || vid.videoDetails?.name || '';
-    const lecNum = extractLecNum(title);
-    const vidDate = vid.date ? vid.date.slice(0, 10) : '';
-    for (const exItem of exercises) {
-      const exDate = exItem.date ? exItem.date.slice(0, 10) : '';
-      for (const ex of exItem.exerciseIds || []) {
-        const exTitle = ex.title || exItem.topic || 'DHA Quiz';
-        const ofLecMatch = exTitle.match(/of\s*lec(?:ture)?\s*0*(\d+)/i);
-        const firstC = ex.content?.[0];
-        const eid = ex.resolvedExerciseId || firstC?.exerciseId || ex._id || exItem._id;
-        if (lecNum && ofLecMatch && ofLecMatch[1] === lecNum) {
-          return {
-            id: exItem._id,
-            exerciseId: String(eid),
-            title: exTitle,
-            totalQuestions: Number(ex.totalQuestions || firstC?.exerciseDetails?.totalQuestions || 10),
-          };
-        }
-        if (vidDate && exDate && vidDate === exDate) {
-          return {
-            id: exItem._id,
-            exerciseId: String(eid),
-            title: exTitle,
-            totalQuestions: Number(ex.totalQuestions || firstC?.exerciseDetails?.totalQuestions || 10),
-          };
-        }
-      }
-    }
-    return null;
-  };
-
-  const renderExercisesList = () => {
-    if (loadingContents) {
-      return (
-        <div className="flex flex-col items-center justify-center py-10 gap-2 text-xs text-[var(--text-secondary)]">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--primary-color)]" />
-          <span>Loading chapter DHA &amp; MCQ quizzes...</span>
-        </div>
-      );
-    }
-    if (exercises.length === 0) {
-      return (
-        <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-8 text-center text-xs text-[var(--text-secondary)]">
-          No DHA / MCQ Quizzes uploaded under this chapter yet. Check DPP PDFs or Chapter Tests!
-        </div>
-      );
-    }
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {exercises.map((exItem) =>
-          (exItem.exerciseIds || []).map((ex, idx) => {
-            const firstC = ex.content?.[0];
-            const exId = String(ex.resolvedExerciseId || firstC?.exerciseId || ex._id || exItem._id);
-            const title = ex.title || exItem.topic || 'Chapter DHA MCQ Quiz';
-            const totalQs = Number(ex.totalQuestions || firstC?.exerciseDetails?.totalQuestions || 10);
-            const totalMarks = Number(ex.totalMarks || firstC?.exerciseDetails?.totalMarks || totalQs * 4);
-            const key = `${exItem._id}-${exId}-${idx}`;
-            const isBusy = launchingDhaId === key;
-            return (
-              <div
-                key={key}
-                className="flex flex-col justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-[11px] font-bold text-amber-400">
-                    <ClipboardCheck className="h-3.5 w-3.5" />
-                    <span>Lecture DHA Quiz</span>
-                    <span className="font-mono text-[var(--text-secondary)]">
-                      · {totalQs} Qs · {totalMarks} Marks
-                    </span>
-                  </div>
-                  <h4 className="font-['Sora'] text-sm font-extrabold text-[var(--text-primary)] line-clamp-2">
-                    {title}
-                  </h4>
-                  {exItem.date && (
-                    <div className="text-[11px] text-[var(--text-secondary)]">
-                      {new Date(exItem.date).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  disabled={Boolean(launchingDhaId)}
-                  onClick={() => handleLaunchDhaQuiz(key, exId, title, totalQs)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition"
-                >
-                  {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-white" />}
-                  <span>{isBusy ? 'Preparing Quiz...' : 'Attempt DHA Quiz'}</span>
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
-    );
-  };
-
   const renderVideoList = (list: BatchVideoItem[], isDpp = false) => {
     if (loadingContents) {
       return (
@@ -833,243 +605,113 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       );
     }
     if (contentsError) {
-      return (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-center text-sm text-red-400">
-          {contentsError}
-        </div>
-      );
+      return renderContentsErrorCard();
     }
     if (list.length === 0) {
       return (
         <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-10 text-center text-sm text-[var(--text-secondary)]">
-          No videos found in this section. Check the Notes PDF or DHA Quizzes tab!
+          No videos found in this section. Check the Notes PDF tab for study materials!
         </div>
       );
     }
     return (
       <div className="space-y-3.5">
-        {list.map((vid) => {
+        {list.map((vid, idx) => {
           const thumb = vid.videoDetails?.image;
           const dur = vid.videoDetails?.duration;
           const dateStr = vid.date ? new Date(vid.date).toLocaleDateString() : '';
           const title = vid.topic || vid.videoDetails?.name || 'Recorded Lecture';
           const isCleared = isLectureCompleted(batch.batch_id, vid._id, adventureState);
-          const matchedDhaPdf = !isDpp ? matchLectureDhaNote(vid) : null;
-          const matchedDhaQuiz = !isDpp ? matchLectureDhaQuiz(vid) : null;
           return (
             <div
-              key={vid._id}
+              key={`${vid._id}-${idx}`}
               onClick={() => triggerPlayVideo(vid, isDpp)}
-              onMouseEnter={() => {
-                if (!selectedSubject || !selectedTopic) return;
-                if (hoverVideoTimerRef.current) window.clearTimeout(hoverVideoTimerRef.current);
-                hoverVideoTimerRef.current = window.setTimeout(() => {
-                  hoverVideoTimerRef.current = null;
-                  const rawUrl = vid.videoDetails?.embedCode || vid.videoDetails?.videoUrl || vid.url || '';
-                  const isYt = vid.urlType === 'youtube' || /youtu\.?be/i.test(rawUrl);
-                  if (!isYt) {
-                    prefetchVideoStream({
+              className="group flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 cursor-pointer transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0 flex-1">
+                <div className="relative aspect-video w-full sm:h-24 sm:w-44 md:h-28 md:w-48 shrink-0 overflow-hidden rounded-2xl bg-slate-900">
+                  {thumb ? (
+                    <img src={thumb} alt={vid.topic} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-indigo-950">
+                      <Video className="h-8 w-8 text-indigo-400" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-lg">
+                      <Play className="h-5 w-5 fill-white ml-0.5" />
+                    </div>
+                  </div>
+                  {dur && (
+                    <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/85 px-2 py-0.5 font-mono text-xs font-bold text-white">
+                      {dur}
+                    </span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-['Sora'] text-sm sm:text-base lg:text-lg font-extrabold text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--primary-color)] transition">
+                    {title}
+                  </h4>
+                  <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
+                    {dateStr && (
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {dateStr}
+                      </span>
+                    )}
+                    {dur && (
+                      <span className="flex items-center gap-1.5 font-mono tabular-nums">
+                        <Clock className="h-3.5 w-3.5 text-indigo-400" />
+                        {dur}
+                      </span>
+                    )}
+                    <span aria-hidden="true">·</span>
+                    <span>{vid.urlType === 'youtube' ? 'YouTube' : 'HD Stream'}</span>
+                    {isCleared && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="font-bold text-emerald-400">Cleared (+50 XP)</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!selectedSubject || !selectedTopic) return;
+                    onToggleLectureComplete({
                       batchId: batch.batch_id,
                       subjectId: selectedSubject.slug || selectedSubject._id,
                       topicId: selectedTopic._id,
                       videoId: vid._id,
-                      findKey: vid.videoDetails?.findKey,
-                      videoDetailsId: vid.videoDetails?.id || vid.videoDetails?._id,
-                      typeId: vid.typeId,
-                      videoName: title,
-                      videoImg: thumb || '',
-                      videoType: 'new',
-                      playType: isDpp ? 'solutions' : 'Lecture',
-                      videoUrl: rawUrl,
+                      title,
                     });
-                  }
-                }, 220);
-              }}
-              onMouseLeave={() => {
-                if (hoverVideoTimerRef.current) {
-                  window.clearTimeout(hoverVideoTimerRef.current);
-                  hoverVideoTimerRef.current = null;
-                }
-              }}
-              className="group flex flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 cursor-pointer transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
-            >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0 flex-1">
-                  <div className="relative aspect-video w-full sm:h-24 sm:w-44 md:h-28 md:w-48 shrink-0 overflow-hidden rounded-2xl bg-slate-900">
-                    {thumb ? (
-                      <img src={thumb} alt={vid.topic} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-indigo-950">
-                        <Video className="h-8 w-8 text-indigo-400" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-lg">
-                        <Play className="h-5 w-5 fill-white ml-0.5" />
-                      </div>
-                    </div>
-                    {dur && (
-                      <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/85 px-2 py-0.5 font-mono text-xs font-bold text-white">
-                        {dur}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-['Sora'] text-sm sm:text-base lg:text-lg font-extrabold text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--primary-color)] transition">
-                      {title}
-                    </h4>
-                    <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs sm:text-sm text-[var(--text-secondary)]">
-                      {dateStr && (
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {dateStr}
-                        </span>
-                      )}
-                      {dur && (
-                        <span className="flex items-center gap-1.5 font-mono tabular-nums">
-                          <Clock className="h-3.5 w-3.5 text-indigo-400" />
-                          {dur}
-                        </span>
-                      )}
-                      <span aria-hidden="true">·</span>
-                      <span>{vid.urlType === 'youtube' ? 'YouTube' : 'HD Stream'}</span>
-                      {isCleared && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="font-bold text-emerald-400">Cleared (+50 XP)</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!selectedSubject || !selectedTopic) return;
-                      onToggleLectureComplete({
-                        batchId: batch.batch_id,
-                        subjectId: selectedSubject.slug || selectedSubject._id,
-                        topicId: selectedTopic._id,
-                        videoId: vid._id,
-                        title,
-                      });
-                    }}
-                    className={`flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
-                      isCleared
-                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                        : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                    }`}
-                    title={isCleared ? 'Stage cleared' : 'Mark lecture complete (+50 XP)'}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="hidden sm:inline">{isCleared ? 'Cleared' : 'Complete'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!selectedSubject || !selectedTopic) return;
-                      const rawUrl = vid.videoDetails?.embedCode || vid.videoDetails?.videoUrl || vid.url || '';
-                      const isYt = (vid.urlType || '').toLowerCase() === 'youtube';
-                      openLectureDownloadModal({
-                        batchId: batch.batch_id,
-                        subjectId: selectedSubject.slug || selectedSubject._id,
-                        topicId: selectedTopic._id,
-                        videoId: vid._id,
-                        findKey: vid.videoDetails?.findKey,
-                        videoDetailsId: vid.videoDetails?.id || vid.videoDetails?._id,
-                        typeId: vid.typeId,
-                        title,
-                        videoImg: thumb || '',
-                        videoType: isYt ? 'youtube' : 'new',
-                        playType: isDpp ? 'solutions' : 'Lecture',
-                        rawVideoUrl: rawUrl,
-                      });
-                    }}
-                    className="flex h-10 w-10 sm:w-auto sm:px-3.5 items-center justify-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-xs font-bold text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 transition"
-                    title="Download Lecture (MP4 / Audio)"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span className="hidden lg:inline">Download</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerPlayVideo(vid, isDpp);
-                    }}
-                    className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition"
-                  >
-                    <Play className="h-4 w-4 fill-white" />
-                    <span>Play</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Inline Lecture DHA Bar (DHA PDF + DHA MCQ Quiz + Quick Link) */}
-              {(matchedDhaPdf || matchedDhaQuiz) && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2"
+                  }}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
+                    isCleared
+                      ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                      : 'border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                  title={isCleared ? 'Stage cleared' : 'Mark lecture complete (+50 XP)'}
                 >
-                  <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
-                    <ClipboardCheck className="h-3.5 w-3.5" />
-                    <span>Lecture DHA:</span>
-                    <span className="font-normal text-[var(--text-secondary)] truncate max-w-[200px] sm:max-w-xs">
-                      {matchedDhaQuiz?.title || matchedDhaPdf?.title}
-                    </span>
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {matchedDhaPdf && (
-                      <>
-                        <a
-                          href={buildPdfProxyUrl(matchedDhaPdf.url, matchedDhaPdf.name, false)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)] hover:border-amber-400 transition"
-                        >
-                          <Eye className="h-3 w-3 text-amber-400" />
-                          <span>DHA PDF</span>
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handlePdfDownload(`dha-${vid._id}`, matchedDhaPdf.url, matchedDhaPdf.name)
-                          }
-                          className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)] hover:border-amber-400 transition"
-                        >
-                          <Download className="h-3 w-3 text-pink-400" />
-                          <span>Save DHA</span>
-                        </button>
-                      </>
-                    )}
-                    {matchedDhaQuiz && (
-                      <button
-                        type="button"
-                        disabled={Boolean(launchingDhaId)}
-                        onClick={() =>
-                          handleLaunchDhaQuiz(
-                            `lec-${vid._id}`,
-                            matchedDhaQuiz.exerciseId,
-                            matchedDhaQuiz.title,
-                            matchedDhaQuiz.totalQuestions
-                          )
-                        }
-                        className="flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1 text-[11px] font-extrabold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
-                      >
-                        {launchingDhaId === `lec-${vid._id}` ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Play className="h-3 w-3 fill-slate-950" />
-                        )}
-                        <span>Attempt DHA Quiz ({matchedDhaQuiz.totalQuestions} Qs)</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{isCleared ? 'Cleared' : 'Complete'}</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerPlayVideo(vid, isDpp);
+                  }}
+                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition"
+                >
+                  <Play className="h-4 w-4 fill-white" />
+                  <span>Play</span>
+                </button>
+              </div>
             </div>
           );
         })}
@@ -1143,9 +785,49 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {!selectedSubject && (
+            <>
+              <button
+                onClick={() =>
+                  setActiveTopTab(activeTopTab === 'schedule' ? 'subjects' : 'schedule')
+                }
+                className={`flex h-10 items-center gap-1.5 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-bold transition ${
+                  activeTopTab === 'schedule'
+                    ? 'bg-[var(--primary-color)] text-white'
+                    : 'border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <CalendarDays className="h-4 w-4" />
+                <span className="hidden sm:inline">Weekly Schedule</span>
+                {todayClasses.length > 0 && (
+                  <span
+                    className={`rounded px-1.5 py-0.2 font-mono text-[11px] ${
+                      activeTopTab === 'schedule' ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400'
+                    }`}
+                  >
+                    {todayClasses.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() =>
+                  setActiveTopTab(activeTopTab === 'announcements' ? 'subjects' : 'announcements')
+                }
+                className={`flex h-10 items-center gap-1.5 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-bold transition ${
+                  activeTopTab === 'announcements'
+                    ? 'bg-[var(--primary-color)] text-white'
+                    : 'border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Bell className="h-4 w-4" />
+                <span className="hidden md:inline">Notices ({announcements.length})</span>
+              </button>
+            </>
+          )}
+
           <button
             onClick={() => setShowAiDrawer(true)}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3 sm:px-4 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
             title="Ask Study AI about this batch, subject, or chapter"
           >
             <Sparkles className="h-4 w-4" />
@@ -1154,10 +836,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
           <button
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:border-red-500/50 hover:text-red-400 transition"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:border-red-500/50 hover:text-red-400 transition"
             title="Close Batch"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -1272,27 +954,17 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
           {loadingDetails ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-sm text-[var(--text-secondary)]">
-              <Loader2 className="h-9 w-9 animate-spin text-[var(--primary-color)]" />
-              <span>Loading batch subjects, tests &amp; Khazana...</span>
+              <Loader2 className="h-10 w-10 animate-spin text-[var(--primary-color)]" />
+              <span>Loading batch subjects & syllabus...</span>
             </div>
-          ) : detailsError && subjects.length === 0 && mahapackBatches.length === 0 && !khazanaProgramId ? (
+          ) : detailsError && subjects.length === 0 && mahapackBatches.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-center">
               <AlertCircle className="h-8 w-8 text-red-400 mb-2" />
               <p className="text-xs text-red-300 max-w-md">{detailsError}</p>
             </div>
           ) : activeTopTab === 'schedule' && !selectedSubject ? (
             /* Weekly Schedule View (Today + Weekly Strip + Routine) */
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setActiveTopTab('subjects')}
-                  className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  <span>Back to Batch Tabs</span>
-                </button>
-              </div>
+            <div className="space-y-5">
               {/* Week Navigation Header */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5">
                 <div>
@@ -1446,8 +1118,8 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                   <span>Loading weekly schedule...</span>
                 </div>
               ) : weeklyError ? (
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-center text-sm text-red-400">
-                  {weeklyError}
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center text-sm text-red-300">
+                  <p>{weeklyError}</p>
                 </div>
               ) : (
                 (() => {
@@ -1488,7 +1160,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                         </div>
                       ) : (
                         <div className="space-y-3.5">
-                          {dayClasses.map((cls) => {
+                          {dayClasses.map((cls, idx) => {
                             const status = cls.liveStatus || 'COMPLETED';
                             const statusClass =
                               status === 'LIVE'
@@ -1502,7 +1174,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
 
                             return (
                               <div
-                                key={cls._id}
+                                key={`${cls._id}-${idx}`}
                                 onClick={() => handlePlayScheduledClass(cls)}
                                 className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5 cursor-pointer transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
                               >
@@ -1549,7 +1221,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                                   </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-2.5 shrink-0">
                                   {firstAttUrl && firstAtt && (
                                     <button
                                       type="button"
@@ -1561,49 +1233,10 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                                           firstAtt.name || `${cls.topic}.pdf`
                                         );
                                       }}
-                                      className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-3.5 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                                      className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                                     >
                                       <Download className="h-4 w-4 text-pink-400" />
                                       <span>Notes</span>
-                                    </button>
-                                  )}
-                                  {status !== 'UPCOMING' && !cls.isCancelled && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const urlType = (cls.urlType || '').toLowerCase();
-                                        const rawUrl =
-                                          cls.ytStreamUrl ||
-                                          cls.newCdnLink ||
-                                          cls.videoDetails?.embedCode ||
-                                          cls.videoDetails?.hls_url ||
-                                          cls.videoDetails?.videoUrl ||
-                                          cls.url ||
-                                          '';
-                                        const isYt = urlType === 'youtube' || /youtu\.?be/i.test(rawUrl);
-                                        openLectureDownloadModal({
-                                          batchId: batch.batch_id,
-                                          subjectId: cls.subjectSlug || cls.batchSubjectId || 'subject',
-                                          topicId: cls.topicId || cls.tags?.[0]?._id || cls._id,
-                                          videoId: cls._id,
-                                          findKey: cls.videoDetails?.findKey,
-                                          videoDetailsId: cls.videoDetails?.id || cls.videoDetails?._id,
-                                          parentScheduleId: cls.parentScheduleId,
-                                          typeId: cls.typeId,
-                                          title: cls.topic || cls.videoDetails?.name || 'Scheduled Lecture',
-                                          videoImg: cls.videoDetails?.image || '',
-                                          videoType: isYt ? 'youtube' : 'new',
-                                          playType: 'Lecture',
-                                          rawVideoUrl: rawUrl,
-                                          isLive: status === 'LIVE',
-                                          urlType: cls.urlType,
-                                        });
-                                      }}
-                                      className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 transition"
-                                      title="Download Lecture"
-                                    >
-                                      <Download className="h-4 w-4" />
                                     </button>
                                   )}
                                   <button
@@ -1667,16 +1300,39 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                 })()
               )}
             </div>
+          ) : activeTopTab === 'announcements' && !selectedSubject ? (
+            /* Announcements View */
+            <div className="space-y-3.5">
+              {announcements.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-12 text-center text-sm text-[var(--text-secondary)]">
+                  No announcements posted for this batch yet.
+                </div>
+              ) : (
+                announcements.map((ann, idx) => (
+                  <div
+                    key={`${ann._id || 'ann'}-${idx}`}
+                    className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-secondary)]">
+                      <span className="font-bold text-indigo-400">Batch Notice</span>
+                      {ann.createdAt && <span>{new Date(ann.createdAt).toLocaleDateString()}</span>}
+                    </div>
+                    <p className="text-sm sm:text-base text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
+                      {ann.announcement || ann.title || 'Notice update'}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
           ) : selectedTopic ? (
-            /* Topic Contents (Videos / Notes / DPP & DHA) */
+            /* Topic Contents (Videos / Notes / DPP) */
             <div className="space-y-4">
               {/* Sub-tabs */}
               <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
                 {[
                   { id: 'videos' as const, label: 'Lectures', count: selectedTopic.videos },
                   { id: 'notes' as const, label: 'Class Notes PDF', count: selectedTopic.notes },
-                  { id: 'DppNotes' as const, label: 'DHA / DPP PDFs', count: dppNotes.length || undefined },
-                  { id: 'exercises' as const, label: 'DHA Quizzes', count: selectedTopic.exercises || exercises.length || undefined },
+                  { id: 'DppNotes' as const, label: 'DPP PDFs' },
                   { id: 'DppVideos' as const, label: 'DPP Videos', count: selectedTopic.dppVideos },
                 ].map((tab) => (
                   <button
@@ -1703,8 +1359,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
               {contentTab === 'notes' &&
                 renderPdfList(notes, 'No class notes PDFs available for this chapter.')}
               {contentTab === 'DppNotes' &&
-                renderPdfList(dppNotes, 'No DHA or DPP PDFs available for this chapter.')}
-              {contentTab === 'exercises' && renderExercisesList()}
+                renderPdfList(dppNotes, 'No DPP PDFs available for this chapter.')}
             </div>
           ) : selectedSubject ? (
             /* STEP 2: Subject Chapters / Topics */
@@ -1713,6 +1368,20 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                 <div className="flex flex-col items-center justify-center py-12 gap-3 text-sm text-[var(--text-secondary)]">
                   <Loader2 className="h-8 w-8 animate-spin text-[var(--primary-color)]" />
                   <span>Loading chapters for {selectedSubject.subject}...</span>
+                </div>
+              ) : topicsError ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+                  <AlertCircle className="h-7 w-7 text-red-400" />
+                  <p className="text-sm text-red-300 max-w-md">{topicsError}</p>
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSubject(selectedSubject)}
+                      className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               ) : topics.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-10 text-center text-sm text-[var(--text-secondary)]">
@@ -1728,7 +1397,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                       const stageDone = totalVids > 0 && clearedCount >= totalVids;
                       return (
                         <button
-                          key={topic._id}
+                          key={`${topic._id}-${idx}`}
                           onClick={() => handleSelectTopic(topic)}
                           className="group flex flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 text-left transition hover:border-[var(--primary-color)]/60 hover:bg-[var(--bg-tertiary)]"
                         >
@@ -1791,471 +1460,184 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
               )}
             </div>
           ) : (
-            /* BATCH HUB: Today Classes Teacher Carousel + Underline Tabs (SUBJECTS | TESTS | KHAZANA | COMMUNITY) */
-            <div className="space-y-4">
-              {/* Today Classes Carousel Card (Matches Reference Screenshot) */}
-              <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-5 w-1 rounded-full bg-[var(--primary-color)]" />
+            /* STEP 1: Today's Schedule Preview + Subjects Grid (or Mahapack Batches) */
+            <div className="space-y-6">
+              {/* Today's Classes Quick Strip */}
+              <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-2 mb-3.5">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-5 w-5 text-[var(--primary-color)]" />
                     <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-                      Today Classes
+                      Today&apos;s Classes ({todayClasses.length})
                     </h3>
                   </div>
                   <button
-                    type="button"
                     onClick={() => setActiveTopTab('schedule')}
-                    className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
+                    className="flex items-center gap-1 text-xs sm:text-sm font-bold text-[var(--primary-color)] hover:underline"
                   >
-                    <CalendarDays className="h-3.5 w-3.5 text-[var(--primary-color)]" />
-                    <span>Weekly Schedule</span>
+                    <span>Full Weekly Schedule</span>
+                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
 
                 {loadingToday ? (
-                  <div className="flex items-center gap-2 py-4 text-xs sm:text-sm text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-2 py-3 text-xs sm:text-sm text-[var(--text-secondary)]">
                     <Loader2 className="h-5 w-5 animate-spin text-[var(--primary-color)]" />
-                    <span>Loading today&apos;s scheduled classes &amp; teachers...</span>
+                    <span>Checking today&apos;s live timetable...</span>
                   </div>
                 ) : todayClasses.length === 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-3 text-xs text-[var(--text-secondary)]">
-                    <span>No live class scheduled today — check Weekly Schedule for upcoming timings.</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-dashed border-[var(--card-border)] px-4 py-3 text-xs sm:text-sm text-[var(--text-secondary)]">
+                    <span>No live class listed for today yet — browse the weekly calendar.</span>
                     <button
-                      type="button"
                       onClick={() => setActiveTopTab('schedule')}
                       className="font-bold text-[var(--primary-color)] hover:underline"
                     >
-                      View Weekly Schedule
+                      Open Weekly Calendar
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
-                    {scheduleNoticeMsg && (
-                      <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3.5 py-2 text-xs text-sky-300">
-                        {scheduleNoticeMsg}
-                      </div>
-                    )}
-                    <div
-                      onScroll={(e) => {
-                        const el = e.currentTarget;
-                        const maxScroll = el.scrollWidth - el.clientWidth;
-                        if (maxScroll <= 0) {
-                          setTodayScrollPct(100);
-                        } else {
-                          const ratio = Math.min(1, Math.max(0, el.scrollLeft / maxScroll));
-                          setTodayScrollPct(Math.round(30 + ratio * 70));
-                        }
-                      }}
-                      className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scroll-smooth no-scrollbar"
-                    >
-                      {todayClasses.map((cls) => {
-                        const teacherLabel =
-                          cls.teacherNames && cls.teacherNames.length > 0
-                            ? cls.teacherNames[0]
-                            : cls.subjectName || 'Faculty';
-                        const imgSrc = !failedTeacherImgs[cls._id] ? cls.teacherImage : '';
-                        const initials = teacherLabel
-                          .split(/\s+/)
-                          .slice(0, 2)
-                          .map((w) => w[0])
-                          .join('')
-                          .toUpperCase();
-
-                        const status = cls.liveStatus || 'COMPLETED';
-                        const isCancelled = Boolean(cls.isCancelled);
-                        const relTime = formatRelativeClassTime(cls.startTime, cls.endTime);
-
-                        return (
-                          <button
-                            key={cls._id}
-                            type="button"
-                            onClick={() => handlePlayScheduledClass(cls)}
-                            className="group w-[245px] sm:w-[260px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] text-left transition hover:border-[var(--primary-color)] hover:shadow-md"
-                          >
-                            {/* Teacher Portrait + Patterned Stage + Black Name Banner */}
-                            <div className="relative h-32 w-full overflow-hidden bg-[var(--bg-tertiary)]">
-                              {/* Soft decorative geometric circles behind portrait */}
-                              <div className="pointer-events-none absolute -top-4 left-3 h-10 w-10 rounded-full bg-[var(--text-primary)]/[0.06]" />
-                              <div className="pointer-events-none absolute top-4 right-2 h-14 w-14 rounded-full bg-[var(--text-primary)]/[0.06]" />
-                              <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 h-24 w-24 rounded-full bg-[var(--text-primary)]/[0.08]" />
-
-                              {imgSrc ? (
-                                <img
-                                  src={imgSrc}
-                                  alt={teacherLabel}
-                                  onError={() =>
-                                    setFailedTeacherImgs((prev) => ({ ...prev, [cls._id]: true }))
-                                  }
-                                  className="relative z-10 mx-auto h-full w-auto max-w-full object-contain object-bottom pt-1.5 transition-transform duration-200 group-hover:scale-105"
-                                />
-                              ) : (
-                                <div className="relative z-10 flex h-full w-full items-center justify-center pb-5">
-                                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--primary-color)]/30 bg-[var(--primary-color)]/15 font-['Sora'] text-xl font-extrabold text-[var(--primary-color)]">
-                                    {initials || 'SC'}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="absolute inset-x-0 bottom-0 z-20 bg-black/90 px-2.5 py-1.5 text-center text-xs font-bold text-white truncate">
-                                {teacherLabel}
-                              </div>
-                            </div>
-
-                            {/* Class Details */}
-                            <div className="p-3 space-y-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <span
-                                  className={`text-[11px] font-bold ${
-                                    isCancelled || status === 'LIVE'
-                                      ? 'text-rose-400'
-                                      : status === 'UPCOMING'
-                                      ? 'text-sky-400'
-                                      : 'text-[var(--text-secondary)]'
-                                  }`}
-                                >
-                                  {relTime}
-                                </span>
-
-                                {isCancelled ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-400">
-                                    Cancelled
-                                  </span>
-                                ) : status === 'LIVE' ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-red-500/35 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                                    Live
-                                  </span>
-                                ) : status === 'UPCOMING' ? (
-                                  <span className="inline-flex items-center rounded-full border border-sky-500/35 bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-400">
-                                    Upcoming
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
-                                    Ended
-                                  </span>
-                                )}
-                              </div>
-
-                              <h4 className="font-['Sora'] text-xs sm:text-sm font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {todayClasses.slice(0, 6).map((cls, idx) => {
+                      const status = cls.liveStatus || 'COMPLETED';
+                      const statusColor =
+                        status === 'LIVE'
+                          ? 'text-red-400'
+                          : status === 'UPCOMING'
+                          ? 'text-sky-400'
+                          : 'text-emerald-400';
+                      return (
+                        <button
+                          key={`${cls._id}-${idx}`}
+                          onClick={() => handlePlayScheduledClass(cls)}
+                          className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 text-left hover:border-[var(--primary-color)] transition"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 text-xs font-bold">
+                              <span className={statusColor}>
+                                {status === 'LIVE' ? '● LIVE' : status === 'UPCOMING' ? 'UPCOMING' : 'DONE'}
+                              </span>
+                              <span className="text-[var(--primary-color)] truncate">
                                 {cls.subjectName || 'Class'}
-                              </h4>
-                              <p className="text-xs text-[var(--text-secondary)] truncate">
-                                {cls.topic}
-                              </p>
-
-                              <div className="mt-2 flex items-center gap-1.5 border-t border-[var(--card-border)] pt-2 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]">
-                                <Clock className="h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate">
-                                  {formatTimeRangeIst(cls.startTime, cls.endTime)}
-                                </span>
-                              </div>
+                              </span>
+                              <span className="font-mono text-[var(--text-secondary)]">
+                                {formatTimeRangeIst(cls.startTime, cls.endTime)}
+                              </span>
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Horizontal Scroll Indicator Track */}
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
-                      <div
-                        className="h-full rounded-full bg-[var(--primary-color)] transition-all duration-150"
-                        style={{
-                          width: `${todayClasses.length <= 1 ? 100 : todayScrollPct}%`,
-                        }}
-                      />
-                    </div>
+                            <div className="font-['Sora'] text-sm sm:text-base font-bold text-[var(--text-primary)] truncate mt-1">
+                              {cls.topic}
+                            </div>
+                            {cls.teacherNames && cls.teacherNames.length > 0 && (
+                              <div className="text-xs text-[var(--text-secondary)] truncate mt-0.5">
+                                {cls.teacherNames.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <Play className="h-5 w-5 shrink-0 text-[var(--primary-color)]" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Per-Batch Underline Tabs (SUBJECTS | TESTS | KHAZANA | COMMUNITY) */}
-              <div className="border-b border-[var(--card-border)]">
-                <nav
-                  aria-label="Batch sections"
-                  className="flex items-center gap-2 sm:gap-6 overflow-x-auto no-scrollbar"
-                >
-                  {[
-                    { id: 'subjects' as const, label: 'SUBJECTS', icon: BookOpen },
-                    { id: 'tests' as const, label: 'TESTS', icon: ClipboardCheck },
-                    { id: 'khazana' as const, label: 'KHAZANA', icon: Gem },
-                    {
-                      id: 'community' as const,
-                      label:
-                        announcements.length > 0
-                          ? `COMMUNITY (${announcements.length})`
-                          : 'COMMUNITY',
-                      icon: Users,
-                    },
-                  ].map((tab) => {
-                    const Icon = tab.icon;
-                    const active = activeTopTab === tab.id;
-                    return (
+              {subjects.length > 0 && (
+                <div>
+                  <h3 className="mb-3.5 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
+                    Select Subject ({subjects.length})
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {subjects.map((subj, idx) => {
+                      const imgUrl =
+                        subj.imageId?.baseUrl && subj.imageId?.key
+                          ? `${subj.imageId.baseUrl}${subj.imageId.key}`
+                          : null;
+                      return (
+                        <button
+                          key={`${subj._id}-${idx}`}
+                          onClick={() => handleSelectSubject(subj)}
+                          className="group flex items-center gap-4 rounded-3xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 sm:p-6 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-lg"
+                        >
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-indigo-500/10 text-indigo-400">
+                            {imgUrl ? (
+                              <img
+                                src={imgUrl}
+                                alt={subj.subject}
+                                className="h-full w-full object-contain p-1.5"
+                              />
+                            ) : (
+                              <BookOpen className="h-8 w-8" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
+                              {subj.subject}
+                            </h4>
+                            <p className="mt-1 text-xs sm:text-sm text-[var(--text-secondary)]">
+                              {subj.tagCount
+                                ? `${subj.tagCount} Chapters`
+                                : subj.lectureCount
+                                ? `${subj.lectureCount} Lectures`
+                                : 'Tap to browse chapters'}
+                            </p>
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-[var(--text-secondary)] group-hover:text-[var(--primary-color)] transition" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {mahapackBatches.length > 0 && (
+                <div>
+                  <h3 className="mb-3.5 flex items-center gap-2 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
+                    <Layers className="h-4 w-4 text-purple-400" />
+                    <span>Included Mahapack Batches ({mahapackBatches.length})</span>
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {mahapackBatches.map((mb: any, idx: number) => (
                       <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveTopTab(tab.id)}
-                        className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-xs sm:text-sm font-extrabold tracking-wide transition ${
-                          active
-                            ? 'border-[var(--primary-color)] text-[var(--primary-color)]'
-                            : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
+                        key={`${mb._id || mb.batchId || 'mb'}-${idx}`}
+                        onClick={() => {
+                          if (onSelectSubBatch) {
+                            onSelectSubBatch({
+                              batch_id: mb._id || mb.batchId,
+                              name: mb.name,
+                              byName: mb.byName,
+                              photo: mb.previewImage?.baseUrl
+                                ? `${mb.previewImage.baseUrl}${mb.previewImage.key}`
+                                : batch.photo,
+                              language: mb.language,
+                              exam: mb.exam?.[0] || batch.exam,
+                            });
+                          }
+                        }}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-5 text-left hover:border-[var(--primary-color)] transition"
                       >
-                        <Icon className="h-3.5 w-3.5" />
-                        <span>{tab.label}</span>
+                        <div className="min-w-0">
+                          <h4 className="font-['Sora'] text-sm sm:text-base font-bold text-[var(--text-primary)] truncate">
+                            {mb.name}
+                          </h4>
+                          <p className="mt-0.5 text-xs sm:text-sm text-[var(--text-secondary)] truncate">
+                            Tap to open batch subjects
+                          </p>
+                        </div>
+                        <ExternalLink className="h-5 w-5 shrink-0 text-indigo-400" />
                       </button>
-                    );
-                  })}
-                </nav>
-              </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-              {/* Tab Content */}
-              {activeTopTab === 'tests' ? (
-                <BatchTestsPanel
-                  batch={batch}
-                  subjects={subjects}
-                  onAskAi={handleOpenAiWithPrompt}
-                />
-              ) : activeTopTab === 'khazana' ? (
-                <KhazanaExplorer
-                  programId={khazanaProgramId || undefined}
-                  batchId={batch.batch_id}
-                  batchName={batch.name}
-                  adventureState={adventureState}
-                  onToggleLectureComplete={onToggleLectureComplete}
-                  onPlayLecture={onPlayLecture}
-                />
-              ) : activeTopTab === 'community' ? (
-                <BatchCommunityPanel
-                  batch={batch}
-                  announcements={announcements}
-                  onAskAi={handleOpenAiWithPrompt}
-                />
-              ) : (
-                <div className="space-y-5">
-                  {subjects.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {subjects.map((subj) => {
-                        const imgUrl =
-                          subj.imageId?.baseUrl && subj.imageId?.key
-                            ? `${subj.imageId.baseUrl}${subj.imageId.key}`
-                            : null;
-                        return (
-                          <button
-                            key={subj._id}
-                            onClick={() => handleSelectSubject(subj)}
-                            className="group flex items-center gap-3.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary-color)]/60 hover:shadow-md"
-                          >
-                            <SubjectIconBadge subjectName={subj.subject} imageUrl={imgUrl} />
-                            <div className="min-w-0 flex-1">
-                              <h4 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] truncate group-hover:text-[var(--primary-color)] transition">
-                                {subj.subject}
-                              </h4>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
-                                <span className="inline-flex items-center gap-1">
-                                  <BookOpen className="h-3.5 w-3.5 text-[var(--primary-color)]" />
-                                  <span>{subj.tagCount || 0} chapters</span>
-                                </span>
-                                <span aria-hidden="true">•</span>
-                                <span className="inline-flex items-center gap-1">
-                                  <Video className="h-3.5 w-3.5 text-[var(--primary-color)]" />
-                                  <span>{subj.lectureCount || 0} lectures</span>
-                                </span>
-                              </div>
-                            </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-secondary)] group-hover:text-[var(--primary-color)] transition" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {mahapackBatches.length > 0 && (
-                    <div>
-                      <h3 className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
-                        <Layers className="h-4 w-4 text-purple-400" />
-                        <span>Included Mahapack Batches ({mahapackBatches.length})</span>
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {mahapackBatches.map((mb: any) => (
-                          <button
-                            key={mb._id || mb.batchId}
-                            onClick={() => {
-                              if (onSelectSubBatch) {
-                                onSelectSubBatch({
-                                  batch_id: mb._id || mb.batchId,
-                                  name: mb.name,
-                                  byName: mb.byName,
-                                  photo: mb.previewImage?.baseUrl
-                                    ? `${mb.previewImage.baseUrl}${mb.previewImage.key}`
-                                    : batch.photo,
-                                  language: mb.language,
-                                  exam: mb.exam?.[0] || batch.exam,
-                                });
-                              }
-                            }}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 text-left hover:border-[var(--primary-color)] transition"
-                          >
-                            <div className="min-w-0">
-                              <h4 className="font-['Sora'] text-sm font-bold text-[var(--text-primary)] truncate">
-                                {mb.name}
-                              </h4>
-                              <p className="mt-0.5 text-xs text-[var(--text-secondary)] truncate">
-                                Tap to open batch subjects, tests &amp; Khazana
-                              </p>
-                            </div>
-                            <ExternalLink className="h-4 w-4 shrink-0 text-indigo-400" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {subjects.length === 0 && mahapackBatches.length === 0 && (
-                    <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-10 text-center text-sm text-[var(--text-secondary)]">
-                      No subjects found for this batch yet. Switch to Tests, Khazana, or Community above!
-                    </div>
-                  )}
+              {subjects.length === 0 && mahapackBatches.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-[var(--card-border)] p-12 text-center text-sm text-[var(--text-secondary)]">
+                  No subjects found for this batch yet.
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
-
-      {/* Inline Lecture DHA CBT Quiz Modal */}
-      {dhaQuizModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-sm">
-          <div className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-3.5">
-              <div>
-                <div className="text-[11px] font-bold text-amber-400">
-                  Lecture DHA CBT Quiz (+4 / -1)
-                </div>
-                <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
-                  {dhaQuizModal.title}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDhaQuizModal(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {!dhaSubmitted ? (
-                <>
-                  <div className="flex items-center justify-between text-xs font-mono text-[var(--text-secondary)]">
-                    <span>
-                      Question {dhaIdx + 1} / {dhaQuizModal.questions.length}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setDhaSubmitted(true)}
-                      className="rounded-lg bg-emerald-600 px-3 py-1 font-sans text-xs font-bold text-white"
-                    >
-                      Submit DHA
-                    </button>
-                  </div>
-
-                  <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 space-y-3">
-                    <p className="text-sm font-bold text-[var(--text-primary)] leading-relaxed">
-                      {dhaQuizModal.questions[dhaIdx].question}
-                    </p>
-                    <div className="space-y-2">
-                      {dhaQuizModal.questions[dhaIdx].options.map((opt, oIdx) => {
-                        const active = dhaAnswers[dhaIdx] === oIdx;
-                        return (
-                          <button
-                            key={oIdx}
-                            type="button"
-                            onClick={() => setDhaAnswers((p) => ({ ...p, [dhaIdx]: oIdx }))}
-                            className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-xs sm:text-sm transition ${
-                              active
-                                ? 'border-[var(--primary-color)] bg-[var(--primary-color)]/15 font-bold text-[var(--text-primary)]'
-                                : 'border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
-                            }`}
-                          >
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--bg-tertiary)] font-mono text-xs font-bold">
-                              {String.fromCharCode(65 + oIdx)}
-                            </span>
-                            <span>{opt}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      disabled={dhaIdx === 0}
-                      onClick={() => setDhaIdx((i) => Math.max(0, i - 1))}
-                      className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2 text-xs font-bold disabled:opacity-40"
-                    >
-                      Previous
-                    </button>
-                    {dhaIdx < dhaQuizModal.questions.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => setDhaIdx((i) => i + 1)}
-                        className="rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white"
-                      >
-                        Next Question
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setDhaSubmitted(true)}
-                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white"
-                      >
-                        Finish &amp; See Solutions
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-3">
-                  {(() => {
-                    let correct = 0;
-                    let wrong = 0;
-                    dhaQuizModal.questions.forEach((q, i) => {
-                      if (dhaAnswers[i] === undefined) return;
-                      if (dhaAnswers[i] === q.correctIndex) correct++;
-                      else wrong++;
-                    });
-                    return (
-                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 font-mono text-sm font-extrabold text-emerald-300">
-                        DHA Score: {correct * 4 - wrong} / {dhaQuizModal.questions.length * 4} ({correct} Correct · {wrong} Wrong)
-                      </div>
-                    );
-                  })()}
-                  {dhaQuizModal.questions.map((q, i) => {
-                    const ok = dhaAnswers[i] === q.correctIndex;
-                    return (
-                      <div key={i} className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 space-y-1.5">
-                        <div className="flex justify-between text-xs font-bold">
-                          <span>Q{i + 1}</span>
-                          <span className={dhaAnswers[i] === undefined ? 'text-slate-400' : ok ? 'text-emerald-400' : 'text-red-400'}>
-                            {dhaAnswers[i] === undefined ? 'Skipped' : ok ? 'Correct (+4)' : 'Wrong (-1)'}
-                          </span>
-                        </div>
-                        <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">{q.question}</p>
-                        <div className="text-xs text-emerald-300">
-                          Ans: {String.fromCharCode(65 + q.correctIndex)}. {q.options[q.correctIndex]}
-                        </div>
-                        <div className="text-xs text-[var(--text-secondary)]">{q.explanation}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Context-Aware Study AI Slide-Over Drawer */}
       {showAiDrawer && (
@@ -2264,8 +1646,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
             <StudyAiPanel
               variant="drawer"
               scopeKey={`batch:${batch.batch_id}`}
-              initialPrompt={aiInitialPrompt}
-              onConsumeInitialPrompt={() => setAiInitialPrompt(null)}
               context={{
                 batchName: batch.name,
                 subjectName: selectedSubject?.subject,

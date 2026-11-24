@@ -87,9 +87,9 @@ export const WatchHistoryView: React.FC<WatchHistoryViewProps> = ({
         </div>
       ) : (
         <div className="space-y-2.5">
-          {history.map((item) => (
+          {history.map((item, idx) => (
             <div
-              key={item.id}
+              key={`${item.id}-${idx}`}
               className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-3.5 shadow-sm transition hover:border-[var(--primary-color)]/50"
             >
               <div className="flex items-start gap-3">

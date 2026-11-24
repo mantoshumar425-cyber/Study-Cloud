@@ -9,9 +9,13 @@ import {
   CheckCircle2,
   Compass,
   RotateCcw,
+  ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { ThemeId, AppControls } from '../types';
+import { getPwAccessToken, getPwUser, logoutPwUser } from '../services/batchService';
+import { PwLoginModal } from './PwLoginModal';
 
 interface SettingsViewProps {
   currentTheme: ThemeId;
@@ -43,6 +47,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const { isInstallable, isInstalled, install, isIOS } = usePWAInstall();
   const [cacheCleared, setCacheCleared] = useState(false);
   const [confirmResetAdv, setConfirmResetAdv] = useState(false);
+  const [showPwLogin, setShowPwLogin] = useState(false);
+  const [pwConnected, setPwConnected] = useState(() => Boolean(getPwAccessToken()));
+  const [pwUser, setPwUser] = useState(() => getPwUser());
+
+  const refreshPwAuth = () => {
+    setPwConnected(Boolean(getPwAccessToken()));
+    setPwUser(getPwUser());
+  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-8">
@@ -64,7 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div>
               <h3 className="font-['Sora'] text-sm font-bold text-[var(--text-primary)]">
-                Study Cloud Web App
+                VidCloud Web App
               </h3>
               <p className="text-xs text-[var(--text-secondary)]">
                 {isInstalled
@@ -89,6 +101,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span>Install</span>
               </button>
             )
+          )}
+        </div>
+      </div>
+
+      {/* Physics Wallah Account Session Card */}
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="font-['Sora'] text-sm font-bold text-[var(--text-primary)]">
+                Physics Wallah Account
+              </h4>
+              <p className="text-xs text-[var(--text-secondary)] truncate">
+                {pwConnected
+                  ? `Signed in${pwUser?.name ? ` as ${pwUser.name}` : ''}${pwUser?.phone ? ` (${pwUser.phone})` : ''}`
+                  : 'Sign in with Phone + OTP for direct batch, notes & lecture access'}
+              </p>
+            </div>
+          </div>
+
+          {pwConnected ? (
+            <button
+              type="button"
+              onClick={async () => {
+                await logoutPwUser();
+                refreshPwAuth();
+              }}
+              className="flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/20 transition shrink-0"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Sign Out</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowPwLogin(true)}
+              className="rounded-xl bg-[var(--primary-color)] px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90 transition shrink-0"
+            >
+              Sign In (OTP)
+            </button>
           )}
         </div>
       </div>
@@ -214,10 +269,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <div>
             <h5 className="font-['Sora'] text-sm font-bold text-[var(--text-primary)]">
-              Study Cloud Learning App
+              VidCloud Learning App
             </h5>
             <p className="text-xs text-[var(--text-secondary)]">
-              Built-in Native Player, Khazana, Practice Tests & Adventure Progress
+              Built-in Native Player, Batches & Adventure Progress
             </p>
           </div>
         </div>
@@ -228,6 +283,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Details
         </button>
       </div>
+
+      {showPwLogin && (
+        <PwLoginModal
+          onClose={() => setShowPwLogin(false)}
+          onSuccess={refreshPwAuth}
+        />
+      )}
     </div>
   );
 };

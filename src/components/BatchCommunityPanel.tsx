@@ -253,9 +253,9 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {mergedNotices.map((notice) => (
+              {mergedNotices.map((notice, idx) => (
                 <div
-                  key={notice.id}
+                  key={`${notice.id}-${idx}`}
                   className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 space-y-2.5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -374,9 +374,9 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {loungePosts.map((post) => (
+              {loungePosts.map((post, idx) => (
                 <div
-                  key={post.id}
+                  key={`${post.id}-${idx}`}
                   className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 space-y-2.5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -432,8 +432,8 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
 
                   {post.replies.length > 0 && (
                     <div className="space-y-1.5 border-l-2 border-[var(--primary-color)]/40 pl-3 pt-1">
-                      {post.replies.map((r) => (
-                        <div key={r.id} className="text-xs">
+                      {post.replies.map((r, idx) => (
+                        <div key={`${r.id}-${idx}`} className="text-xs">
                           <span className="font-bold text-[var(--text-primary)]">{r.author}: </span>
                           <span className="text-[var(--text-secondary)]">{r.text}</span>
                         </div>

@@ -461,7 +461,14 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
           : { chapters: [], paginate: null };
       const nextList = res.chapters || [];
       setChapters((prev) => {
-        const merged = [...prev, ...nextList];
+        const seen = new Set(prev.map((c) => c._id));
+        const merged = [...prev];
+        for (const c of nextList) {
+          if (c?._id && !seen.has(c._id)) {
+            seen.add(c._id);
+            merged.push(c);
+          }
+        }
         const total = Number(res.paginate?.totalCount || 0);
         setHasMoreChapters(total > 0 ? merged.length < total : nextList.length >= 16);
         return merged;
@@ -526,7 +533,14 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       );
       const nextList = res.topics || [];
       setTopics((prev) => {
-        const merged = [...prev, ...nextList];
+        const seen = new Set(prev.map((t) => t._id));
+        const merged = [...prev];
+        for (const t of nextList) {
+          if (t?._id && !seen.has(t._id)) {
+            seen.add(t._id);
+            merged.push(t);
+          }
+        }
         const total = Number(res.paginate?.totalCount || 0);
         setHasMoreTopics(total > 0 ? merged.length < total : nextList.length >= 20);
         return merged;
@@ -564,7 +578,16 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       );
       const list = res.items || [];
       setContents((prev) => {
-        const merged = append ? [...prev, ...list] : list;
+        const base = append ? prev : [];
+        const seen = new Set(base.map((entry) => `${entry.type}-${entry.data?._id}`));
+        const merged = [...base];
+        for (const entry of list) {
+          const k = `${entry.type}-${entry.data?._id}`;
+          if (!entry.data?._id || !seen.has(k)) {
+            seen.add(k);
+            merged.push(entry);
+          }
+        }
         const total = Number(res.paginate?.totalCount || 0);
         setHasMoreContents(total > 0 ? merged.length < total : list.length >= 20);
         return merged;
@@ -1011,9 +1034,9 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                     Browse by Subject ({subjects.length})
                   </h3>
                   <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
-                    {subjects.map((subj) => (
+                    {subjects.map((subj, idx) => (
                       <button
-                        key={subj._id}
+                        key={`${subj._id}-${idx}`}
                         onClick={() => handleOpenSubjectChapters(subj)}
                         onMouseEnter={() =>
                           activeProgram &&
@@ -1040,11 +1063,11 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
               )}
 
               {/* Subject-wise Course Carousels */}
-              {subjects.map((subj) => {
+              {subjects.map((subj, sIdx) => {
                 const list = subjectPreviews[subj._id] || [];
                 if (list.length === 0) return null;
                 return (
-                  <div key={subj._id} className="space-y-3">
+                  <div key={`${subj._id}-${sIdx}`} className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2.5">
                         <SubjectIconBadge subjectName={subj.name} size="sm" />
@@ -1060,12 +1083,12 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                     </div>
 
                     <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-                      {list.map((chap) => {
+                      {list.map((chap, cIdx) => {
                         const thumb = resolveChapterImage(chap);
                         const chapSubjId = resolveChapterSubjectId(chap, subj._id);
                         return (
                           <button
-                            key={chap._id}
+                            key={`${chap._id}-${cIdx}`}
                             onClick={() => handleOpenChapterTopics(chap, subj)}
                             onMouseEnter={() =>
                               activeProgram &&
@@ -1154,11 +1177,11 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-                    {filteredTeachers.map((teacher) => {
+                    {filteredTeachers.map((teacher, idx) => {
                       const img = resolveTeacherImage(teacher);
                       return (
                         <button
-                          key={teacher._id}
+                          key={`${teacher._id}-${idx}`}
                           onClick={() => handleOpenTeacherChapters(teacher)}
                           onMouseEnter={() =>
                             activeProgram &&
@@ -1263,7 +1286,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {chapters.map((chap) => {
+                {chapters.map((chap, idx) => {
                   const thumb = resolveChapterImage(chap);
                   const subjName = resolveChapterSubjectName(
                     chap,
@@ -1275,7 +1298,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                   );
                   return (
                     <button
-                      key={chap._id}
+                      key={`${chap._id}-${idx}`}
                       onClick={() => handleOpenChapterTopics(chap)}
                       onMouseEnter={() =>
                         activeProgram &&
@@ -1407,7 +1430,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                   const topicChapId = topic.chapterId || selectedChapter._id;
                   return (
                     <button
-                      key={topic._id}
+                      key={`${topic._id}-${idx}`}
                       onClick={() => handleOpenTopic(topic)}
                       onMouseEnter={() =>
                         activeProgram &&
@@ -1470,11 +1493,11 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
             </div>
           ) : subTopics.length > 0 ? (
             <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
-              {subTopics.map((st) => {
+              {subTopics.map((st, idx) => {
                 const isActive = activeSubTopic?._id === st._id;
                 return (
                   <button
-                    key={st._id}
+                    key={`${st._id}-${idx}`}
                     onClick={() => {
                       setActiveSubTopic(st);
                       setContents([]);
@@ -1516,7 +1539,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
           ) : (
             <>
               <div className="space-y-3.5">
-                {contents.map((entry) => {
+                {contents.map((entry, idx) => {
                   const d = entry.data || ({} as KhazanaContentItem['data']);
                   const isLecture =
                     entry.type === 'LECTURE' ||
@@ -1544,7 +1567,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
 
                     return (
                       <div
-                        key={d._id}
+                        key={`lec-${d._id}-${idx}`}
                         onClick={() => handlePlayKhazanaLecture(entry)}
                         onMouseEnter={() =>
                           activeProgram &&
@@ -1709,7 +1732,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
 
                   return (
                     <div
-                      key={d._id}
+                      key={`note-${d._id}-${idx}`}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 sm:p-5"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">

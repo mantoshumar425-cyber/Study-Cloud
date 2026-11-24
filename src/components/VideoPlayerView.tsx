@@ -39,12 +39,8 @@ import {
   recordStudyActivity,
   toggleLectureCompleted,
 } from '../services/adventureService';
-import { openLectureDownloadModal } from '../services/lectureDownloadManager';
-import {
-  exportMediaToDeviceGallery,
-  getOfflineLectureRecord,
-} from '../services/offlineLectureDb';
 import { StudyAiPanel } from './StudyAiPanel';
+import { getOfflineLectureRecord } from '../services/offlineLectureDb';
 
 export interface ActiveLectureInput {
   batchId: string;
@@ -57,7 +53,6 @@ export interface ActiveLectureInput {
   videoId: string;
   findKey?: string;
   videoDetailsId?: string;
-  parentScheduleId?: string;
   typeId?: string;
   title: string;
   videoImg?: string;
@@ -65,8 +60,6 @@ export interface ActiveLectureInput {
   playType?: string;
   rawVideoUrl?: string;
   resumeSeconds?: number;
-  isLive?: boolean;
-  urlType?: string;
   offlineId?: string;
   offlineFormat?: 'mp4' | 'm4a';
 }
@@ -86,12 +79,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const offlineBlobUrlRef = useRef<string | null>(null);
 
   // Stream resolution state
   const [resolving, setResolving] = useState(true);
   const [resolveError, setResolveError] = useState<string | null>(null);
-  const [isLivePendingError, setIsLivePendingError] = useState(false);
-  const [isLiveStream, setIsLiveStream] = useState(Boolean(lecture.isLive));
   const [streamData, setStreamData] = useState<ResolvedStream | null>(null);
 
   // Video playback state
@@ -163,9 +155,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     };
   }, [forceCssLandscape]);
 
-  // Clean up orientation lock on unmount
+  // Clean up orientation lock & offline blob URLs on unmount
   useEffect(() => {
     return () => {
+      if (offlineBlobUrlRef.current) {
+        URL.revokeObjectURL(offlineBlobUrlRef.current);
+        offlineBlobUrlRef.current = null;
+      }
       try {
         (screen.orientation as any)?.unlock?.();
       } catch {
@@ -207,44 +203,26 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     scheduleAutoHide();
   };
 
-  const offlineBlobUrlRef = useRef<string | null>(null);
-
-  // Clean up any local offline blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (offlineBlobUrlRef.current) {
-        URL.revokeObjectURL(offlineBlobUrlRef.current);
-        offlineBlobUrlRef.current = null;
-      }
-    };
-  }, []);
-
-  // 1. Resolve real stream on mount (or load offline blob directly) & record daily streak activity
+  // 1. Resolve real stream (or load offline saved Blob) on mount & record daily streak activity
   const loadStream = async () => {
     setResolving(true);
     setResolveError(null);
-    setIsLivePendingError(false);
-
-    if (offlineBlobUrlRef.current) {
-      URL.revokeObjectURL(offlineBlobUrlRef.current);
-      offlineBlobUrlRef.current = null;
-    }
-
     try {
       if (lecture.offlineId) {
         const rec = await getOfflineLectureRecord(lecture.offlineId);
         if (!rec || !rec.blob) {
-          throw new Error('Offline lecture file storage mein nahi mili.');
+          throw new Error('Offline lecture file was not found in your device vault.');
+        }
+        if (offlineBlobUrlRef.current) {
+          URL.revokeObjectURL(offlineBlobUrlRef.current);
         }
         const objUrl = URL.createObjectURL(rec.blob);
         offlineBlobUrlRef.current = objUrl;
-        if (rec.format === 'm4a') {
-          setIsAudioOnly(true);
-        }
         setStreamData({
           success: true,
-          streamUrl: objUrl,
+          isYoutube: false,
           isDirectMp4: true,
+          streamUrl: objUrl,
           attachments: [],
         });
         return;
@@ -258,19 +236,15 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         videoId: lecture.videoId,
         findKey: lecture.findKey,
         videoDetailsId: lecture.videoDetailsId,
-        parentScheduleId: lecture.parentScheduleId,
         typeId: lecture.typeId,
         videoName: lecture.title,
         videoImg: lecture.videoImg,
         videoType: lecture.videoType || 'new',
         playType: lecture.playType || 'Lecture',
         videoUrl: lecture.rawVideoUrl,
-        isLive: lecture.isLive,
-        urlType: lecture.urlType,
       });
       setStreamData(data);
     } catch (err: any) {
-      setIsLivePendingError(Boolean(err?.liveStreamPending));
       setResolveError(err?.message || 'Unable to load video stream.');
     } finally {
       setResolving(false);
@@ -278,7 +252,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   useEffect(() => {
-    setIsLiveStream(Boolean(lecture.isLive));
     recordStudyActivity();
     setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId));
     onAdventureUpdate?.();
@@ -308,15 +281,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        startFragPrefetch: true,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 60,
         backBufferLength: 60,
-        abrEwmaDefaultEstimate: 2500000,
-        manifestLoadingTimeOut: 8000,
-        fragLoadingTimeOut: 12000,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 10,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -329,16 +294,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         }));
         setQualityLevels(levels);
         setCurrentLevel(-1);
-        if (lecture.resumeSeconds && lecture.resumeSeconds > 5 && !lecture.isLive) {
+        if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
           videoEl.currentTime = lecture.resumeSeconds;
         }
         videoEl.play().catch(() => {});
-      });
-
-      hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
-        if (data?.details?.live) {
-          setIsLiveStream(true);
-        }
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -383,7 +342,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         id: historyId,
         batchId: lecture.batchId,
         batchName: lecture.batchName,
-        programId: lecture.programId,
         subjectId: lecture.subjectId,
         topicId: lecture.topicId,
         videoId: lecture.videoId,
@@ -534,7 +492,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   const formatTime = (secs: number) => {
-    if (!secs || !Number.isFinite(secs)) return isLiveStream ? 'LIVE' : '0:00';
+    if (!secs || !isFinite(secs)) return '0:00';
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = Math.floor(secs % 60);
@@ -594,7 +552,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               {lecture.title}
             </h2>
             <span className="text-[11px] sm:text-xs text-slate-300 truncate">
-              {lecture.batchName || 'Study Cloud HD Stream'}
+              {lecture.batchName || 'VidCloud HD Stream'}
               {lecture.subjectName ? ` • ${lecture.subjectName}` : ''}
             </span>
           </div>
@@ -641,52 +599,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <CheckCircle2 className="h-4 w-4" />
             <span className="hidden md:inline">{completed ? 'Cleared (+50 XP)' : 'Complete'}</span>
           </button>
-
-          {!streamData?.isYoutube && (
-            <button
-              onClick={async () => {
-                if (lecture.offlineId) {
-                  const rec = await getOfflineLectureRecord(lecture.offlineId);
-                  if (rec?.blob) {
-                    await exportMediaToDeviceGallery({
-                      blob: rec.blob,
-                      fileName: rec.fileName,
-                      mimeType: rec.mimeType,
-                      title: rec.title,
-                    });
-                  }
-                } else {
-                  openLectureDownloadModal({
-                    batchId: lecture.batchId,
-                    batchName: lecture.batchName,
-                    programId: lecture.programId,
-                    subjectId: lecture.subjectId,
-                    subjectName: lecture.subjectName,
-                    topicId: lecture.topicId,
-                    videoId: lecture.videoId,
-                    findKey: lecture.findKey,
-                    videoDetailsId: lecture.videoDetailsId,
-                    parentScheduleId: lecture.parentScheduleId,
-                    typeId: lecture.typeId,
-                    title: lecture.title,
-                    videoImg: lecture.videoImg,
-                    videoType: lecture.videoType,
-                    playType: lecture.playType,
-                    rawVideoUrl: lecture.rawVideoUrl,
-                    isLive: lecture.isLive,
-                    urlType: lecture.urlType,
-                    resolvedStream: streamData,
-                  });
-                }
-                revealControls();
-              }}
-              className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-600 hover:text-white transition whitespace-nowrap"
-              title={lecture.offlineId ? 'Save to Phone Gallery' : 'Download Lecture (MP4 / Audio)'}
-            >
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">{lecture.offlineId ? 'Save Gallery' : 'Download'}</span>
-            </button>
-          )}
 
           {!streamData?.isYoutube && (
             <button
@@ -820,19 +732,12 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
         ) : resolveError ? (
           <div className="flex flex-col items-center gap-3 text-center p-6 max-w-md">
-            {isLivePendingError ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/15 px-3 py-1 text-xs font-bold text-red-400">
-                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                LIVE CLASS STREAM
-              </span>
-            ) : (
-              <AlertTriangle className="h-12 w-12 text-amber-500" />
-            )}
+            <AlertTriangle className="h-12 w-12 text-amber-500" />
             <h3 className="font-['Sora'] text-lg font-bold text-white">
-              {isLivePendingError ? 'Live Class Waiting for Stream / VOD' : 'Could Not Play Video'}
+              Could Not Play Video
             </h3>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{resolveError}</p>
-            <div className="flex gap-2 mt-2">
+            <div className="flex flex-wrap justify-center gap-2 mt-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -840,7 +745,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 }}
                 className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 transition"
               >
-                {isLivePendingError ? 'Check Again / Retry' : 'Retry Stream'}
+                Retry Stream
               </button>
               <button
                 onClick={(e) => {
@@ -876,7 +781,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 const cur = e.currentTarget.currentTime;
                 const dur = e.currentTarget.duration || 0;
                 setCurrentTime(cur);
-                if (Number.isFinite(dur) && dur > 0 && cur / dur >= 0.8 && !completed) {
+                if (dur > 0 && cur / dur >= 0.8 && !completed) {
                   markLectureCompleted({
                     batchId: lecture.batchId,
                     subjectId: lecture.subjectId,
@@ -888,15 +793,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   onAdventureUpdate?.();
                 }
               }}
-              onLoadedMetadata={(e) => {
-                const d = e.currentTarget.duration;
-                if (Number.isFinite(d) && d > 0) {
-                  setDuration(d);
-                } else if (d === Infinity) {
-                  setIsLiveStream(true);
-                  setDuration(0);
-                }
-              }}
+              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
               className={`h-full w-full cursor-pointer ${
                 fillMode === 'cover' ? 'object-cover' : 'object-contain'
               } ${isAudioOnly ? 'opacity-0 pointer-events-none absolute inset-0' : ''}`}
@@ -1101,18 +998,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         >
           {/* Seek Bar */}
           <div className="flex items-center gap-3 mb-2.5">
-            {isLiveStream && !duration ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600/90 px-2.5 py-0.5 text-[11px] font-extrabold text-white">
-                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                LIVE
-              </span>
-            ) : (
-              <span className="font-mono text-xs sm:text-sm text-slate-200">{formatTime(currentTime)}</span>
-            )}
+            <span className="font-mono text-xs sm:text-sm text-slate-200">{formatTime(currentTime)}</span>
             <div
               onClick={(e) => {
                 const vid = videoRef.current;
-                if (!vid || !duration || !Number.isFinite(duration)) return;
+                if (!vid || !duration) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 vid.currentTime = ratio * duration;
@@ -1122,14 +1012,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             >
               <div
                 className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : isLiveStream ? 100 : 0}%` }}
+                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
               />
               <div
                 className="absolute top-1/2 -translate-y-1/2 h-4 w-4 -ml-2 rounded-full bg-white shadow-md transition group-hover:scale-110"
-                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : isLiveStream ? 100 : 0}%` }}
+                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
               />
             </div>
-            <span className="font-mono text-xs sm:text-sm text-slate-300">{isLiveStream && !duration ? 'LIVE' : formatTime(duration)}</span>
+            <span className="font-mono text-xs sm:text-sm text-slate-300">{formatTime(duration)}</span>
           </div>
 
           {/* Control Buttons Row */}

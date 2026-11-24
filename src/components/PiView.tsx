@@ -629,7 +629,7 @@ export const PiView: React.FC<PiViewProps> = ({
                       <div className="flex items-center gap-1.5">
                         {heroSlides.map((s, idx) => (
                           <button
-                            key={s.id}
+                            key={`${s.id}-${idx}`}
                             type="button"
                             onClick={() => setHeroIdx(idx)}
                             className={`h-1.5 rounded-full transition-all ${
@@ -670,7 +670,7 @@ export const PiView: React.FC<PiViewProps> = ({
               <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
                 {homeData!.top10Series.map((series, idx) => (
                   <button
-                    key={series.id}
+                    key={`${series.id}-${idx}`}
                     type="button"
                     onClick={() => handleOpenSeries(series)}
                     className="group relative flex shrink-0 items-end gap-0 text-left w-[200px] sm:w-[224px]"
@@ -733,7 +733,7 @@ export const PiView: React.FC<PiViewProps> = ({
                   const pastel = PASTEL_BG[idx % PASTEL_BG.length];
                   return (
                     <button
-                      key={teacher.id}
+                      key={`${teacher.id}-${idx}`}
                       type="button"
                       onClick={() => handleOpenTeacher(teacher)}
                       className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-b ${pastel} p-2.5 text-center transition hover:scale-[1.02] hover:border-[var(--primary-color)]`}
@@ -789,9 +789,9 @@ export const PiView: React.FC<PiViewProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {homeData!.latestSeries.map((series) => (
+                {homeData!.latestSeries.map((series, idx) => (
                   <button
-                    key={`lat-${series.id}`}
+                    key={`lat-${series.id}-${idx}`}
                     type="button"
                     onClick={() => handleOpenSeries(series)}
                     className="group overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] text-left hover:border-[var(--primary-color)] transition"
@@ -840,9 +840,9 @@ export const PiView: React.FC<PiViewProps> = ({
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                {homeData!.conceptPlaylists.slice(0, 8).map((pl) => (
+                {homeData!.conceptPlaylists.slice(0, 8).map((pl, idx) => (
                   <button
-                    key={`pl-${pl.id}`}
+                    key={`pl-${pl.id}-${idx}`}
                     type="button"
                     onClick={() => handleOpenSeries(pl)}
                     className="group overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] text-left hover:border-[var(--primary-color)] transition"
@@ -897,11 +897,11 @@ export const PiView: React.FC<PiViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {homeData!.quizCards.map((card) => {
+                {homeData!.quizCards.map((card, idx) => {
                   const isBusy = loadingQuizId === card.id;
                   return (
                     <div
-                      key={card.id}
+                      key={`${card.id}-${idx}`}
                       className="flex flex-col justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4"
                     >
                       <div className="space-y-1.5">
@@ -959,11 +959,11 @@ export const PiView: React.FC<PiViewProps> = ({
             </div>
 
             <div className="grid flex-1 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 overflow-y-auto p-4 sm:p-5">
-              {categories.map((cat) => {
+              {categories.map((cat, idx) => {
                 const isSelected = cat.id === selectedGoalId;
                 return (
                   <button
-                    key={cat.id}
+                    key={`${cat.id}-${idx}`}
                     type="button"
                     onClick={() => handleChooseGoal(cat.id)}
                     className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
@@ -1096,9 +1096,9 @@ export const PiView: React.FC<PiViewProps> = ({
                         Series &amp; Courses ({teacherProfile!.series.length})
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {teacherProfile!.series.map((s) => (
+                        {teacherProfile!.series.map((s, idx) => (
                           <button
-                            key={s.id}
+                            key={`${s.id}-${idx}`}
                             type="button"
                             onClick={() => {
                               setSelectedTeacher(null);
@@ -1141,9 +1141,9 @@ export const PiView: React.FC<PiViewProps> = ({
                         Quick Play Lectures
                       </h4>
                       <div className="space-y-2.5">
-                        {teacherProfile!.playlistVideos.map((ep) => (
+                        {teacherProfile!.playlistVideos.map((ep, idx) => (
                           <div
-                            key={ep.id}
+                            key={`${ep.id}-${idx}`}
                             onClick={() => handlePlayEpisode(ep, selectedTeacher.name)}
                             className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3 cursor-pointer hover:border-[var(--primary-color)] transition"
                           >
@@ -1227,9 +1227,9 @@ export const PiView: React.FC<PiViewProps> = ({
               {/* Subject Switcher if Batch Series */}
               {(seriesDetail?.subjects || []).length > 1 && (
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {seriesDetail!.subjects!.map((subj) => (
+                  {seriesDetail!.subjects!.map((subj, idx) => (
                     <button
-                      key={subj.id}
+                      key={`${subj.id}-${idx}`}
                       type="button"
                       onClick={() => handleOpenSeries(selectedSeries, subj.id)}
                       className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
@@ -1247,9 +1247,9 @@ export const PiView: React.FC<PiViewProps> = ({
               {/* Topic / Chapter Selector */}
               {(seriesDetail?.topics || []).length > 0 && (
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {seriesDetail!.topics.map((tp) => (
+                  {seriesDetail!.topics.map((tp, idx) => (
                     <button
-                      key={tp.id}
+                      key={`${tp.id}-${idx}`}
                       type="button"
                       onClick={() =>
                         handleOpenSeries(selectedSeries, seriesDetail?.activeSubjectId, tp.id)
@@ -1289,7 +1289,7 @@ export const PiView: React.FC<PiViewProps> = ({
                     ) : (
                       seriesDetail!.episodes.map((ep, idx) => (
                         <div
-                          key={ep.id || idx}
+                          key={`${ep.id || 'ep'}-${idx}`}
                           onClick={() => handlePlayEpisode(ep, selectedSeries.title)}
                           className="group flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3 sm:p-3.5 cursor-pointer hover:border-[var(--primary-color)] transition"
                         >
@@ -1353,15 +1353,15 @@ export const PiView: React.FC<PiViewProps> = ({
                       <h4 className="text-xs font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
                         Study Notes &amp; PDFs
                       </h4>
-                      {seriesDetail!.notes.map((n: BatchNoteItem) =>
-                        (n.homeworkIds || []).map((hw) =>
-                          (hw.attachmentIds || []).map((att) => {
+                      {seriesDetail!.notes.map((n: BatchNoteItem, nIdx: number) =>
+                        (n.homeworkIds || []).map((hw, hIdx) =>
+                          (hw.attachmentIds || []).map((att, aIdx) => {
                             const directUrl = resolveAttachmentUrl(att);
                             if (!directUrl) return null;
                             const name = att.name || hw.topic || n.topic || 'Concept Notes.pdf';
                             return (
                               <div
-                                key={`${hw._id}-${att._id}`}
+                                key={`${n._id || nIdx}-${hw._id || hIdx}-${att._id || aIdx}`}
                                 className="flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2.5"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0">

@@ -24,6 +24,7 @@ import {
   downloadPdfFile,
   fetchPwBatchQuizzes,
   PwBatchQuizItem,
+  safeReadJson,
   startPwQuiz,
 } from '../services/batchService';
 import { recordStudyActivity } from '../services/adventureService';
@@ -274,8 +275,8 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
           count: customCount,
         }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.success || !Array.isArray(json.questions)) {
+      const json = await safeReadJson<any>(res, 'Could not generate test paper');
+      if (!json.success || !Array.isArray(json.questions)) {
         throw new Error(json.message || 'Could not generate test paper.');
       }
       startPack({
@@ -662,11 +663,11 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
         {testSubTab === 'quizzes' && (pwSubjects.length > 0 || academicSubjects.length > 0) && (
           <div className="flex flex-col sm:flex-row gap-2.5">
             <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {(pwSubjects.length > 0 ? pwSubjects : academicSubjects).map((subj) => {
+              {(pwSubjects.length > 0 ? pwSubjects : academicSubjects).map((subj, idx) => {
                 const isSelected = selectedSubjectSlug === subj.slug;
                 return (
                   <button
-                    key={subj._id}
+                    key={`${subj._id}-${idx}`}
                     type="button"
                     onClick={() => {
                       setSelectedSubjectSlug(subj.slug);
@@ -693,8 +694,8 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
                 <option value="">All Chapters with Quizzes</option>
                 {pwTopics
                   .filter((t) => t.exercises > 0)
-                  .map((t) => (
-                    <option key={t._id} value={t._id}>
+                  .map((t, idx) => (
+                    <option key={`${t._id}-${idx}`} value={t._id}>
                       {t.name} ({t.exercises})
                     </option>
                   ))}
@@ -723,11 +724,11 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {officialTests.map((t) => {
+            {officialTests.map((t, idx) => {
               const isLaunching = launchingId === t.id;
               return (
                 <div
-                  key={t.id}
+                  key={`${t.id}-${idx}`}
                   className="flex flex-col justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 hover:border-[var(--primary-color)]/60 transition"
                 >
                   <div className="space-y-1.5">
@@ -801,11 +802,11 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {quizzes.map((quiz) => {
+          {quizzes.map((quiz, idx) => {
             const isLaunching = launchingId === quiz.id;
             return (
               <div
-                key={quiz.id}
+                key={`${quiz.id}-${idx}`}
                 className="flex flex-col justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 hover:border-[var(--primary-color)]/60 transition"
               >
                 <div className="space-y-1">
@@ -875,8 +876,8 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
             className="sm:col-span-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
             {academicSubjects.length > 0 ? (
-              academicSubjects.map((s) => (
-                <option key={s._id} value={s.subject}>
+              academicSubjects.map((s, idx) => (
+                <option key={`${s._id}-${idx}`} value={s.subject}>
                   {s.subject}
                 </option>
               ))

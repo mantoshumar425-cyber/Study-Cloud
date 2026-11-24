@@ -57,9 +57,9 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {favoriteBatches.map((batch) => (
+          {favoriteBatches.map((batch, idx) => (
             <BatchCard
-              key={batch.batch_id}
+              key={`${batch.batch_id}-${idx}`}
               batch={batch}
               isFavorite={true}
               onToggleFavorite={onToggleFavorite}

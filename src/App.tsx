@@ -303,7 +303,12 @@ export default function App() {
         });
     }
 
-    return source;
+    const seenBatchIds = new Set<string>();
+    return source.filter((b) => {
+      if (!b?.batch_id || seenBatchIds.has(b.batch_id)) return false;
+      seenBatchIds.add(b.batch_id);
+      return true;
+    });
   }, [allBatches, vidyapeethBatches, myBatches, adventureState.customBatches, activeCategory, selectedLanguage, selectedClass, searchQuery]);
 
   const displayedBatches = useMemo(() => {
@@ -807,9 +812,9 @@ export default function App() {
             ) : (
               /* Compact 4-col Responsive Batch Cards Grid */
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                {displayedBatches.map((batch) => (
+                {displayedBatches.map((batch, idx) => (
                   <BatchCard
-                    key={batch.batch_id}
+                    key={`${batch.batch_id}-${idx}`}
                     batch={batch}
                     isFavorite={favorites.includes(batch.batch_id)}
                     onToggleFavorite={handleToggleFavorite}

@@ -24,6 +24,7 @@ import {
   downloadPdfFile,
   fetchPwBatchQuizzes,
   PwBatchQuizItem,
+  safeReadJson,
   startPwQuiz,
 } from '../services/batchService';
 import { recordStudyActivity } from '../services/adventureService';
@@ -440,8 +441,8 @@ export const TestView: React.FC<TestViewProps> = ({
           count: aiCount,
         }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.success || !Array.isArray(json.questions)) {
+      const json = await safeReadJson<any>(res, 'Could not generate practice test');
+      if (!json.success || !Array.isArray(json.questions)) {
         throw new Error(json.message || 'Could not generate practice test.');
       }
       startPack({
@@ -912,8 +913,8 @@ export const TestView: React.FC<TestViewProps> = ({
             }}
             className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
           >
-            {pwBatchOptions.map((b) => (
-              <option key={b.batch_id} value={b.batch_id}>
+            {pwBatchOptions.map((b, idx) => (
+              <option key={`${b.batch_id}-${idx}`} value={b.batch_id}>
                 Batch: {b.name}
               </option>
             ))}
@@ -930,8 +931,8 @@ export const TestView: React.FC<TestViewProps> = ({
             {pwSubjects.length === 0 ? (
               <option value="">Loading subjects...</option>
             ) : (
-              pwSubjects.map((s) => (
-                <option key={s._id} value={s.slug}>
+              pwSubjects.map((s, idx) => (
+                <option key={`${s._id}-${idx}`} value={s.slug}>
                   Subject: {s.subject}
                 </option>
               ))
@@ -946,8 +947,8 @@ export const TestView: React.FC<TestViewProps> = ({
             <option value="">All Chapters with Quizzes</option>
             {pwTopics
               .filter((t) => t.exercises > 0)
-              .map((t) => (
-                <option key={t._id} value={t._id}>
+              .map((t, idx) => (
+                <option key={`${t._id}-${idx}`} value={t._id}>
                   {t.name} ({t.exercises} quizzes)
                 </option>
               ))}
@@ -973,11 +974,11 @@ export const TestView: React.FC<TestViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {officialTests.map((t) => {
+              {officialTests.map((t, idx) => {
                 const isLaunching = launchingQuizId === t.id;
                 return (
                   <div
-                    key={t.id}
+                    key={`${t.id}-${idx}`}
                     className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 hover:border-[var(--primary-color)]/60 transition"
                   >
                     <div className="space-y-1.5">
@@ -1050,11 +1051,11 @@ export const TestView: React.FC<TestViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pwQuizzes.slice(0, 12).map((quiz) => {
+            {pwQuizzes.slice(0, 12).map((quiz, idx) => {
               const isLaunching = launchingQuizId === quiz.id;
               return (
                 <div
-                  key={quiz.id}
+                  key={`${quiz.id}-${idx}`}
                   className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 hover:border-[var(--primary-color)]/60 transition"
                 >
                   <div className="space-y-1">

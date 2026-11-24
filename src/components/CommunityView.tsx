@@ -267,8 +267,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none max-w-xs"
             >
               <option value="">Active & Enrolled Batches</option>
-              {candidateBatches.map((b) => (
-                <option key={b.batch_id} value={b.batch_id}>
+              {candidateBatches.map((b, idx) => (
+                <option key={`${b.batch_id}-${idx}`} value={b.batch_id}>
                   {b.name}
                 </option>
               ))}
@@ -289,9 +289,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               >
                 All Feeds ({pwFeed.length})
               </button>
-              {pwChannels.map((ch) => (
+              {pwChannels.map((ch, idx) => (
                 <button
-                  key={ch.batchId}
+                  key={`${ch.batchId}-${idx}`}
                   type="button"
                   onClick={() => setSelectedBatchFilter(ch.batchId)}
                   className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
@@ -321,9 +321,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
           ) : (
             <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
-              {filteredPwFeed.map((item) => (
+              {filteredPwFeed.map((item, idx) => (
                 <div
-                  key={item.id}
+                  key={`${item.id}-${idx}`}
                   className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 sm:p-4 space-y-2.5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">

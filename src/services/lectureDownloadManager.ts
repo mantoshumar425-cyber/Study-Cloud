@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ResolvedStream } from '../types';
-import { resolveVideoStream } from './batchService';
+import { resolveVideoStream, safeReadJson } from './batchService';
 import {
   exportMediaToDeviceGallery,
   getOfflineLectureRecord,
@@ -469,7 +469,7 @@ function startPollingJob(jobId: string) {
         }
         return;
       }
-      const data = await res.json();
+      const data = await safeReadJson<any>(res, 'Failed to check download status');
 
       if (data.status === 'ready') {
         stopPollingJob(jobId);
@@ -571,8 +571,8 @@ export async function openLectureDownloadModal(target: LectureDownloadTarget): P
     if (stream.dashUrl) qs.set('dash_url', stream.dashUrl);
 
     const res = await fetch(`/api/lecture-download/inspect?${qs.toString()}`);
-    const json = await res.json();
-    if (!res.ok || !json.success) {
+    const json = await safeReadJson<any>(res, 'Could not inspect video qualities');
+    if (!json.success) {
       throw new Error(json.message || 'Could not inspect video qualities.');
     }
 
@@ -620,8 +620,8 @@ export async function startLectureDownload(
         isDirectMp4: Boolean(option.isDirectMp4),
       }),
     });
-    const json = await res.json();
-    if (!res.ok || !json.success || !json.jobId) {
+    const json = await safeReadJson<any>(res, 'Could not start download');
+    if (!json.success || !json.jobId) {
       throw new Error(json.message || 'Could not start download.');
     }
 
