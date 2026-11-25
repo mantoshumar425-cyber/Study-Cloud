@@ -46,6 +46,7 @@ import {
   prefetchKhazanaTopicFirstContents,
   prefetchKhazanaTopics,
   prefetchVideoStream,
+  openPdfViewer,
   resolveAttachmentUrl,
 } from '../services/batchService';
 import { isLectureCompleted } from '../services/adventureService';
@@ -628,20 +629,24 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       );
       setSubTopics(list);
       if (list.length > 0) {
-        setActiveSubTopic(list[0]);
-        if (list.length > 1) {
-          // Warm Notes/DPPs sub-tab silently while Lectures render
+        const prefersNotes = (topic.videos ?? 1) === 0 && (topic.notes ?? 0) > 0;
+        const initialSub =
+          (prefersNotes ? list.find((st) => st._id === 'notes') : undefined) || list[0];
+        setActiveSubTopic(initialSub);
+        const secondarySub = list.find((st) => st._id !== initialSub._id);
+        if (secondarySub) {
+          // Warm secondary sub-tab silently while primary tab renders
           void fetchKhazanaContents(
             activeProgram.programId,
             subjectId,
             chapterId,
             topic._id,
-            list[1]._id,
+            secondarySub._id,
             1,
             20
           ).catch(() => {});
         }
-        await loadSubTopicContents(topic, list[0], 1, false);
+        await loadSubTopicContents(topic, initialSub, 1, false);
       }
     } catch (err: any) {
       setContentsError(err?.message || 'Failed to load topic materials.');
@@ -699,7 +704,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
       videoId: d._id,
       findKey: vd?.findKey,
       videoDetailsId: vd?._id || vd?.id,
-      typeId: vd?._id || vd?.id,
+      typeId: d.typeId || vd?._id || vd?.id,
       title,
       videoImg: vd?.image || '',
       videoType: isYt ? 'youtube' : 'khazana',
@@ -1458,6 +1463,13 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                         <h4 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--primary-color)] transition">
                           {topic.name}
                         </h4>
+                        {(topic.videos !== undefined || topic.notes !== undefined) && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-[11px] tabular-nums text-[var(--text-secondary)]">
+                            <span>{topic.videos || 0} Videos</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{topic.notes || 0} Notes</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <ChevronRight className="h-5 w-5 shrink-0 text-[var(--text-secondary)] group-hover:translate-x-0.5 group-hover:text-[var(--primary-color)] transition" />
@@ -1580,7 +1592,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                               videoId: d._id,
                               findKey: vd?.findKey,
                               videoDetailsId: vd?._id || vd?.id,
-                              typeId: vd?._id || vd?.id,
+                              typeId: d.typeId || vd?._id || vd?.id,
                               videoName: title,
                               videoImg: vd?.image || '',
                               videoType: isYt ? 'youtube' : 'khazana',
@@ -1607,9 +1619,9 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                                 <Video className="h-8 w-8 text-indigo-400" />
                               </div>
                             )}
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-lg">
-                                <Play className="h-5 w-5 fill-white ml-0.5" />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/35 group-hover:bg-black/20 transition">
+                              <div className="sc-play-orb h-12 w-12">
+                                <Play className="h-5 w-5 fill-current ml-0.5" />
                               </div>
                             </div>
                             {dur && (
@@ -1690,7 +1702,7 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                                 videoId: d._id,
                                 findKey: vd?.findKey,
                                 videoDetailsId: vd?._id || vd?.id,
-                                typeId: vd?._id || vd?.id,
+                                typeId: d.typeId || vd?._id || vd?.id,
                                 title,
                                 videoImg: vd?.image || '',
                                 videoType: isYt ? 'youtube' : 'khazana',
@@ -1711,9 +1723,11 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                               e.stopPropagation();
                               handlePlayKhazanaLecture(entry);
                             }}
-                            className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition"
+                            className="sc-play-btn shrink-0 px-4 py-2 text-xs sm:text-sm"
                           >
-                            <Play className="h-4 w-4 fill-white" />
+                            <span className="sc-play-btn-badge h-6 w-6">
+                              <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                            </span>
                             <span>Play</span>
                           </button>
                         </div>
@@ -1725,7 +1739,6 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
                   const att = d.fileId || d.imageId;
                   const directUrl = att ? resolveAttachmentUrl(att) : '';
                   const fileName = att?.name || `${title}.pdf`;
-                  const viewUrl = directUrl ? buildPdfProxyUrl(directUrl, fileName, false) : '';
                   const itemKey = `kh-pdf-${d._id}`;
                   const isDownloading = downloadingPdfKey === itemKey;
                   const isDone = downloadedPdfKey === itemKey;
@@ -1751,15 +1764,14 @@ export const KhazanaExplorer: React.FC<KhazanaExplorerProps> = ({
 
                       {directUrl ? (
                         <div className="flex items-center gap-2.5 shrink-0">
-                          <a
-                            href={viewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openPdfViewer(directUrl, fileName)}
                             className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                           >
                             <Eye className="h-4 w-4 text-indigo-400" />
                             <span>View PDF</span>
-                          </a>
+                          </button>
                           <button
                             type="button"
                             disabled={isDownloading}

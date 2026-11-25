@@ -29,6 +29,7 @@ import { ResolvedStream } from '../types';
 import {
   buildPdfProxyUrl,
   downloadPdfFile,
+  openPdfViewer,
   resolveAttachmentUrl,
   resolveVideoStream,
   saveWatchHistory,
@@ -814,13 +815,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 </button>
                 <button
                   onClick={togglePlayPause}
-                  className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-indigo-600/95 text-white shadow-2xl shadow-indigo-600/40 hover:bg-indigo-500 active:scale-95 transition"
+                  className="sc-play-hero h-16 w-16 sm:h-20 sm:w-20"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
                     <Pause className="h-8 w-8 sm:h-9 sm:w-9" />
                   ) : (
-                    <Play className="h-8 w-8 sm:h-9 sm:w-9 ml-1" />
+                    <Play className="h-8 w-8 sm:h-9 sm:w-9 fill-current ml-1" />
                   )}
                 </button>
                 <button
@@ -908,7 +909,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                       </div>
                     );
                   }
-                  const viewUrl = buildPdfProxyUrl(rawHref, fileName, false);
                   const isDownloading = downloadingAttIdx === i;
                   const isDone = downloadedAttIdx === i;
                   return (
@@ -920,14 +920,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         {fileName}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <a
-                          href={viewUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openPdfViewer(rawHref, fileName)}
                           className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/20 transition"
                         >
                           View
-                        </a>
+                        </button>
                         <button
                           type="button"
                           disabled={isDownloading}
@@ -1027,9 +1026,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={togglePlayPause}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-500 transition active:scale-95"
+                className="sc-play-btn h-11 w-11 justify-center !p-0"
               >
-                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 fill-current ml-0.5" />}
               </button>
 
               <button

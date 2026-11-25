@@ -95,88 +95,94 @@ export async function resolveStudyParchamVideoStream(params: {
     subjectId = (await resolveStudyParchamSubjectId(batchId, rawSubjectId)) || rawSubjectId;
   }
 
-  for (const cid of candidateIds) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 14000);
-    try {
-      const ts = Math.floor(Date.now() / 1000).toString();
-      const sig = crypto
-        .createHmac('sha256', SP_VIDEO_SECRET)
-        .update(`${ts}${SP_VIDEO_SECRET}`)
-        .digest('hex');
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass > 0) {
+      await new Promise((r) => setTimeout(r, 350));
+    }
 
-      const qs = new URLSearchParams({
-        batchId,
-        contentId: cid,
-        subjectId,
-        batch_id: batchId,
-        video_id: cid,
-        subject_id: subjectId,
-      });
+    for (const cid of candidateIds) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 14000);
+      try {
+        const ts = Math.floor(Date.now() / 1000).toString();
+        const sig = crypto
+          .createHmac('sha256', SP_VIDEO_SECRET)
+          .update(`${ts}${SP_VIDEO_SECRET}`)
+          .digest('hex');
 
-      const res = await fetch(`${STUDYPARCHAM_VIDEO_API}?${qs.toString()}`, {
-        signal: controller.signal,
-        headers: {
-          'x-sp-time': ts,
-          'x-sp-signature': sig,
-          Origin: 'https://pw.studyparcham.in',
-          Referer: 'https://pw.studyparcham.in/',
-          Accept: 'application/json, text/plain, */*',
-          'User-Agent': DEFAULT_UA,
-        },
-      });
-
-      const json = (await res.json().catch(() => null)) as any;
-      if (!res.ok || !json) continue;
-
-      let payload = json;
-      if (json.encryptedData) {
-        try {
-          payload = decryptStudyParchamVideoPayload(String(json.encryptedData));
-        } catch {
-          continue;
-        }
-      }
-
-      const d = payload?.data || payload;
-      const baseUrl = String(d?.url || '').trim();
-      const signedQueryRaw = String(d?.signedUrl || '').trim();
-      if (!baseUrl) continue;
-
-      const signedQuery = signedQueryRaw.startsWith('?')
-        ? signedQueryRaw.slice(1)
-        : signedQueryRaw;
-      const fullUrl =
-        signedQuery && !baseUrl.includes('Signature=')
-          ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${signedQuery}`
-          : baseUrl;
-
-      const expiresAt = Number(d?.signatureExpireAt || 0) || Date.now() + 90 * 1000;
-      const cfRoot = getCfRootFromUrl(baseUrl);
-      if (cfRoot && signedQuery) {
-        cfSigCache.set(cfRoot, {
+        const qs = new URLSearchParams({
           batchId,
+          contentId: cid,
           subjectId,
-          videoId: cid,
-          signedQuery,
-          expiresAt,
+          batch_id: batchId,
+          video_id: cid,
+          subject_id: subjectId,
         });
-      }
 
-      const drm = d?.drmDetails || {};
-      return {
-        ok: true,
-        url: fullUrl,
-        signedQuery,
-        drmType: String(d?.drmType || drm?.type || ''),
-        keyIdB64: String(d?.keyId || drm?.kid || drm?.keyId || ''),
-        keyValB64: String(d?.key || drm?.key || drm?.keyValue || ''),
-        expiresAt,
-      };
-    } catch {
-      // try next candidate
-    } finally {
-      clearTimeout(timer);
+        const res = await fetch(`${STUDYPARCHAM_VIDEO_API}?${qs.toString()}`, {
+          signal: controller.signal,
+          headers: {
+            'x-sp-time': ts,
+            'x-sp-signature': sig,
+            Origin: 'https://pw.studyparcham.in',
+            Referer: 'https://pw.studyparcham.in/',
+            Accept: 'application/json, text/plain, */*',
+            'User-Agent': DEFAULT_UA,
+          },
+        });
+
+        const json = (await res.json().catch(() => null)) as any;
+        if (!res.ok || !json) continue;
+
+        let payload = json;
+        if (json.encryptedData) {
+          try {
+            payload = decryptStudyParchamVideoPayload(String(json.encryptedData));
+          } catch {
+            continue;
+          }
+        }
+
+        const d = payload?.data || payload;
+        const baseUrl = String(d?.url || '').trim();
+        const signedQueryRaw = String(d?.signedUrl || '').trim();
+        if (!baseUrl) continue;
+
+        const signedQuery = signedQueryRaw.startsWith('?')
+          ? signedQueryRaw.slice(1)
+          : signedQueryRaw;
+        const fullUrl =
+          signedQuery && !baseUrl.includes('Signature=')
+            ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${signedQuery}`
+            : baseUrl;
+
+        const expiresAt = Number(d?.signatureExpireAt || 0) || Date.now() + 90 * 1000;
+        const cfRoot = getCfRootFromUrl(baseUrl);
+        if (cfRoot && signedQuery) {
+          cfSigCache.set(cfRoot, {
+            batchId,
+            subjectId,
+            videoId: cid,
+            signedQuery,
+            expiresAt,
+          });
+        }
+
+        const drm = d?.drmDetails || {};
+        return {
+          ok: true,
+          url: fullUrl,
+          signedQuery,
+          drmType: String(d?.drmType || drm?.type || ''),
+          keyIdB64: String(d?.keyId || drm?.kid || drm?.keyId || ''),
+          keyValB64: String(d?.key || drm?.key || drm?.keyValue || ''),
+          expiresAt,
+        };
+      } catch {
+        // try next candidate
+      } finally {
+        clearTimeout(timer);
+      }
     }
   }
 

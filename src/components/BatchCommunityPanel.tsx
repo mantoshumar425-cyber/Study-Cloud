@@ -14,9 +14,9 @@ import {
 } from 'lucide-react';
 import { BatchItem } from '../types';
 import {
-  buildPdfProxyUrl,
   downloadPdfFile,
   fetchPwCommunityFeed,
+  openPdfViewer,
   PwCommunityPost,
   resolveAttachmentUrl,
 } from '../services/batchService';
@@ -274,15 +274,14 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-2.5">
                     {notice.attachmentUrl ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        <a
-                          href={buildPdfProxyUrl(notice.attachmentUrl, notice.attachmentName, false)}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openPdfViewer(notice.attachmentUrl!, notice.attachmentName)}
                           className="flex items-center gap-1 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)]"
                         >
                           <Eye className="h-3.5 w-3.5 text-indigo-400" />
                           <span>View PDF</span>
-                        </a>
+                        </button>
                         <button
                           type="button"
                           onClick={() => downloadPdfFile(notice.attachmentUrl!, notice.attachmentName)}

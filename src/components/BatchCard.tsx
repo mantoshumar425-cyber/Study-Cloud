@@ -56,7 +56,7 @@ export const BatchCard: React.FC<BatchCardProps> = ({
       onMouseEnter={schedulePrefetch}
       onMouseLeave={cancelPrefetch}
       onTouchStart={schedulePrefetch}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-[var(--card-shadow)] transition-all duration-300 hover:-translate-y-1 hover:border-[var(--primary-color)]/60 hover:shadow-xl cursor-pointer"
+      className="group relative flex flex-col overflow-hidden rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-[var(--card-shadow)] transition-all duration-300 hover:-translate-y-1 hover:border-[var(--primary-color)]/70 hover:shadow-xl cursor-pointer"
     >
       {/* Banner / Thumbnail */}
       <div className="relative aspect-video w-full overflow-hidden bg-slate-900/60">
@@ -78,6 +78,8 @@ export const BatchCard: React.FC<BatchCardProps> = ({
           </div>
         )}
 
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/25" />
+
         {/* Favorite Heart Button */}
         <button
           onClick={handleFavoriteClick}
@@ -91,55 +93,48 @@ export const BatchCard: React.FC<BatchCardProps> = ({
           <Heart className={`h-4 w-4 ${isFavorite ? 'fill-white' : ''}`} />
         </button>
 
-        {/* Exam Tag */}
-        {batch.exam && (
-          <div className="absolute top-2.5 left-2.5 rounded-lg bg-black/65 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-md border border-white/10">
-            {batch.exam}
+        {/* Exam & Class Strip */}
+        {(batch.exam || batch.class) && (
+          <div className="absolute top-2.5 left-2.5 rounded-lg bg-black/70 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white backdrop-blur-md border border-white/10">
+            {[batch.exam, batch.class ? `Class ${batch.class}` : ''].filter(Boolean).join(' · ')}
           </div>
         )}
 
-        {/* Hover Quick Play Overlay */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+        {/* Hover Signature Quick Play Orb */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button
             onClick={handlePlayClick}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95"
+            className="sc-play-orb h-14 w-14"
             title="Start Lectures"
           >
-            <Play className="h-5 w-5 fill-white ml-0.5" />
+            <Play className="h-6 w-6 fill-current ml-0.5" />
           </button>
         </div>
 
-        {/* Language Badge */}
+        {/* Language Tag */}
         {batch.language && (
-          <div className="absolute bottom-2 left-2.5 rounded-md bg-indigo-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+          <div className="absolute bottom-2.5 left-2.5 rounded-md bg-[var(--primary-color)]/95 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
             {batch.language}
-          </div>
-        )}
-
-        {/* Class Badge */}
-        {batch.class && (
-          <div className="absolute bottom-2 right-2.5 rounded-md bg-slate-900/90 px-2 py-0.5 text-[10px] font-bold text-slate-200 border border-white/10">
-            Class {batch.class}
           </div>
         )}
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col p-3.5 sm:p-4">
-        <h3 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] line-clamp-2 leading-snug group-hover:text-[var(--primary-color)] transition-colors">
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="font-['Sora'] text-sm sm:text-[15px] font-extrabold text-[var(--text-primary)] line-clamp-2 leading-snug group-hover:text-[var(--primary-color)] transition-colors">
           {batch.name}
         </h3>
 
         {batch.byName && (
-          <p className="mt-1.5 text-xs text-[var(--text-secondary)] line-clamp-1">
+          <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-1">
             {batch.byName}
           </p>
         )}
 
         <div className="mt-auto pt-3 flex items-center justify-between border-t border-[var(--card-border)] text-xs text-[var(--text-secondary)]">
           <div className="flex items-center gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 text-indigo-400" />
-            <span className="font-medium">{batch.isVidyapeeth ? 'Vidyapeeth Center' : 'Live + Recorded'}</span>
+            <BookOpen className="h-3.5 w-3.5 text-[var(--primary-color)]" />
+            <span className="font-semibold">{batch.isVidyapeeth ? 'Vidyapeeth' : 'Lectures + Notes'}</span>
           </div>
           {batch.amount !== undefined && (
             <span className="font-extrabold text-emerald-400">

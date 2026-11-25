@@ -29,7 +29,7 @@ const LEGACY_CACHE_KEY = 'vidcloud_batches_cache';
 const LEGACY_CACHE_TIME_KEY = 'vidcloud_batches_cache_time';
 const IDB_NAME = 'vidcloud_catalog_db';
 const IDB_STORE = 'catalog';
-const IDB_RECORD_KEY = 'batches_v2';
+const IDB_RECORD_KEY = 'batches_v3';
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 const FAVORITES_KEY = 'studystark_favorites';
@@ -529,6 +529,21 @@ export function buildPdfProxyUrl(rawUrl: string, fileName?: string, download = f
   });
   if (download) qs.set('download', '1');
   return `/api/pdf-proxy?${qs.toString()}`;
+}
+
+export const PDF_VIEWER_EVENT = 'studycloud:open-pdf';
+
+export function openPdfViewer(rawUrl: string, title?: string): void {
+  const cleanUrl = (rawUrl || '').trim();
+  if (!cleanUrl || typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(PDF_VIEWER_EVENT, {
+      detail: {
+        url: cleanUrl,
+        title: (title || 'Study Notes.pdf').trim(),
+      },
+    })
+  );
 }
 
 export async function downloadPdfFile(rawUrl: string, fileName?: string): Promise<void> {

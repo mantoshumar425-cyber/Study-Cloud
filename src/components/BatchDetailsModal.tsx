@@ -48,6 +48,7 @@ import {
   fetchTodaySchedule,
   fetchTopicContents,
   fetchWeeklySchedule,
+  openPdfViewer,
   resolveAttachmentUrl,
 } from '../services/batchService';
 import { getAdventureMetrics, isLectureCompleted } from '../services/adventureService';
@@ -532,7 +533,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
               const itemKey = `${noteItem._id || nIdx}-${hw._id || hIdx}-${att._id || aIdx}`;
               const directUrl = resolveAttachmentUrl(att);
               const fileName = att.name || hw.topic || noteItem.topic || 'Study Notes.pdf';
-              const viewUrl = directUrl ? buildPdfProxyUrl(directUrl, fileName, false) : '';
               const isDownloading = downloadingPdfKey === itemKey;
               const isDone = downloadedPdfKey === itemKey;
 
@@ -556,15 +556,14 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                   </div>
                   {directUrl ? (
                     <div className="flex items-center gap-2.5 shrink-0">
-                      <a
-                        href={viewUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openPdfViewer(directUrl, fileName)}
                         className="flex items-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                       >
                         <Eye className="h-4 w-4 text-indigo-400" />
                         <span>View PDF</span>
-                      </a>
+                      </button>
                       <button
                         type="button"
                         disabled={isDownloading}
@@ -637,9 +636,9 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                       <Video className="h-8 w-8 text-indigo-400" />
                     </div>
                   )}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-lg">
-                      <Play className="h-5 w-5 fill-white ml-0.5" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/35 group-hover:bg-black/20 transition">
+                    <div className="sc-play-orb h-12 w-12">
+                      <Play className="h-5 w-5 fill-current ml-0.5" />
                     </div>
                   </div>
                   {dur && (
@@ -706,9 +705,11 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                     e.stopPropagation();
                     triggerPlayVideo(vid, isDpp);
                   }}
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition"
+                  className="sc-play-btn shrink-0 px-4 py-2 text-xs sm:text-sm"
                 >
-                  <Play className="h-4 w-4 fill-white" />
+                  <span className="sc-play-btn-badge h-6 w-6">
+                    <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                  </span>
                   <span>Play</span>
                 </button>
               </div>
@@ -1245,9 +1246,11 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                                       e.stopPropagation();
                                       handlePlayScheduledClass(cls);
                                     }}
-                                    className="flex items-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 transition"
+                                    className="sc-play-btn px-4 py-2 text-xs sm:text-sm"
                                   >
-                                    <Play className="h-4 w-4 fill-white" />
+                                    <span className="sc-play-btn-badge h-6 w-6">
+                                      <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                                    </span>
                                     <span>{status === 'UPCOMING' ? 'Timing' : 'Watch'}</span>
                                   </button>
                                 </div>
@@ -1532,7 +1535,9 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                               </div>
                             )}
                           </div>
-                          <Play className="h-5 w-5 shrink-0 text-[var(--primary-color)]" />
+                          <span className="sc-play-orb h-9 w-9 shrink-0">
+                            <Play className="h-4 w-4 fill-current ml-0.5" />
+                          </span>
                         </button>
                       );
                     })}

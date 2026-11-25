@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-[var(--card-border)] bg-[var(--bg-primary)]/90 backdrop-blur-md transition-colors">
+    <header className="sticky top-0 z-30 w-full border-b border-[var(--card-border)] bg-[var(--bg-primary)]/85 backdrop-blur-xl shadow-sm transition-colors">
       <div className="flex h-[58px] items-center justify-between gap-3 sm:gap-6 px-3 sm:px-5">
         {/* Zone 1: Slidebar Toggle + Study Cloud Brand */}
         <div className="flex items-center gap-2.5 shrink-0">
@@ -108,9 +108,9 @@ export const Header: React.FC<HeaderProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => onTabChange(item.id)}
-                className={`whitespace-nowrap shrink-0 py-1 transition-colors border-b-2 ${
+                className={`whitespace-nowrap shrink-0 py-1.5 transition-colors border-b-2 ${
                   isActive
-                    ? 'border-[var(--primary-color)] text-[var(--text-primary)]'
+                    ? 'border-[var(--primary-color)] text-[var(--primary-color)]'
                     : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >

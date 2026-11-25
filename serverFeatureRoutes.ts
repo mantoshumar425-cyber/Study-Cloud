@@ -37,14 +37,14 @@ export interface FeatureRouteDeps {
 
 const CURATED_KHAZANA_PROGRAMS = [
   {
-    programId: '65d862392b1da90018ad8f3b',
-    batchId: '65d862392b1da90018ad8f3b',
+    programId: '65dc6fbabb55350018d555b7',
+    batchId: '65dc6fbabb55350018d555b7',
     title: 'Lakshya JEE Khazana Vault',
     subtitle: 'Class 12 Full JEE Main & Advanced Recorded Archive',
     exam: 'IIT-JEE',
     classLevel: '12',
-    batchName: 'Lakshya JEE',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/1da7fd49-8e2c-44da-a186-5134e41d4d01.png',
+    batchName: 'Lakshya JEE 2026',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/de06beef-a1fb-4056-9323-edd3cf10c518.png',
   },
   {
     programId: '676e4dee1ec923bc192f38c9',
@@ -53,18 +53,28 @@ const CURATED_KHAZANA_PROGRAMS = [
     subtitle: 'Class 11 JEE Core Physics, Chemistry & Mathematics',
     exam: 'IIT-JEE',
     classLevel: '11',
-    batchName: 'Arjuna JEE',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/63f4c892-62e2-406d-a07a-1b42a1b43b6b.png',
+    batchName: 'Arjuna JEE 2026',
+    photo: 'https://d2bps9p1kiy4ka.cloudfront.net/5eb393ee95fab7468a79d189/61e8fafe-0891-4741-a76d-b3f7dedae5b7.png',
   },
   {
-    programId: '65d75d320531c20018ade9bb',
-    batchId: '65d75d320531c20018ade9bb',
+    programId: '6994351acb3c3eb967dd60f5',
+    batchId: '6994351acb3c3eb967dd60f5',
+    title: 'Prayas JEE Dropper Vault',
+    subtitle: 'Complete JEE Main & Advanced Dropper Archive',
+    exam: 'IIT-JEE',
+    classLevel: 'Dropper',
+    batchName: 'Prayas JEE 3.0 2027',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/a8e9ff48-f6f1-494e-893f-3f39fc97c100.jpg',
+  },
+  {
+    programId: '65dc6fbaf5bcd500180102cd',
+    batchId: '65dc6fbaf5bcd500180102cd',
     title: 'Lakshya NEET Khazana Vault',
     subtitle: 'Class 12 NEET Medical Physics, Chemistry, Botany & Zoology',
     exam: 'NEET',
     classLevel: '12',
-    batchName: 'Lakshya NEET',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/7b002496-c7a1-425f-b40a-bf7b944f7990.png',
+    batchName: 'Lakshya NEET 2026',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/aedad935-8809-413b-9bd7-365bea3352cc.png',
   },
   {
     programId: '676e5677418e84037bd6247c',
@@ -73,48 +83,48 @@ const CURATED_KHAZANA_PROGRAMS = [
     subtitle: 'Class 11 NEET Foundation & NCERT Mastery',
     exam: 'NEET',
     classLevel: '11',
-    batchName: 'Arjuna NEET',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/4a6e3933-fc40-4c69-888b-bc5df0d8cd2a.png',
+    batchName: 'Arjuna NEET 2026',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/faaf5401-7378-41fc-89bf-14e8cad4d25c.png',
   },
   {
-    programId: '65dc6fbabb55350018d555b7',
-    batchId: '65dc6fbabb55350018d555b7',
-    title: 'Lakshya JEE 2.0 Archive',
-    subtitle: 'Fast-Track JEE Class 12 Recorded Faculty Series',
-    exam: 'IIT-JEE',
-    classLevel: '12',
-    batchName: 'Lakshya JEE 2.0',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/1da7fd49-8e2c-44da-a186-5134e41d4d01.png',
-  },
-  {
-    programId: '65d86274903497001869fc0c',
-    batchId: '65d86274903497001869fc0c',
+    programId: '67738e4c6e30ac746bcb34d7',
+    batchId: '67738e4c6e30ac746bcb34d7',
     title: 'Yakeen NEET Dropper Vault',
     subtitle: 'Complete Dropper NEET Physics, Chemistry & Biology',
     exam: 'NEET',
     classLevel: 'Dropper',
-    batchName: 'Yakeen NEET',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/7b002496-c7a1-425f-b40a-bf7b944f7990.png',
+    batchName: 'Yakeen NEET 2026',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/bda01e28-e8dc-4930-a0f9-6a578e1b5afe.png',
   },
   {
-    programId: '65d86258365e8300187255f5',
-    batchId: '65d86258365e8300187255f5',
-    title: 'Prayas JEE Dropper Vault',
-    subtitle: 'Complete JEE Main & Advanced Dropper Archive',
-    exam: 'IIT-JEE',
-    classLevel: 'Dropper',
-    batchName: 'Prayas JEE',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/63f4c892-62e2-406d-a07a-1b42a1b43b6b.png',
-  },
-  {
-    programId: '65de115e0a24b4001870c17f',
-    batchId: '65de115e0a24b4001870c17f',
+    programId: '677b9f1967ac17b383bf24f1',
+    batchId: '677b9f1967ac17b383bf24f1',
     title: 'Udaan Class 10 Boards Vault',
     subtitle: 'Class 10 Maths, Science, SST & English Board Prep',
-    exam: 'Boards',
+    exam: 'Boards · Foundation',
     classLevel: '10',
-    batchName: 'Udaan Class 10',
-    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/f32e58bb-4b4e-4b02-9a3c-4f25f3ed0b27.png',
+    batchName: 'Udaan Class 10 2026',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/414feae9-dd97-409e-b3eb-d4f87c358a74.png',
+  },
+  {
+    programId: '6774ebb37aa1a60276d43e7c',
+    batchId: '6774ebb37aa1a60276d43e7c',
+    title: 'Neev Class 9 Foundation Vault',
+    subtitle: 'Class 9 NCERT Science, Maths, English & Olympiad Prep',
+    exam: 'Foundation',
+    classLevel: '9',
+    batchName: 'NEEV 2026 (Class 9th)',
+    photo: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/0d87949f-d1f8-4483-bcf2-80730b8f5369.png',
+  },
+  {
+    programId: '64d76d08873c2600194d2bf0',
+    batchId: '64d76d08873c2600194d2bf0',
+    title: 'UPSC Prarambh Vault',
+    subtitle: 'UPSC CSE GS Foundation, CSAT & Current Affairs Archive',
+    exam: 'UPSC',
+    classLevel: 'IAS / GS',
+    batchName: 'UPSC Prarambh 2026',
+    photo: 'https://d2bps9p1kiy4ka.cloudfront.net/5eb393ee95fab7468a79d189/d2293f37-8588-4803-8197-9d478623dd76.jpeg',
   },
 ];
 
@@ -123,8 +133,8 @@ const PI_CATEGORIES = [
     id: 'iit-jee',
     name: 'IIT JEE',
     tagline: 'Physics, Chemistry & Mathematics Concept Series',
-    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/1da7fd49-8e2c-44da-a186-5134e41d4d01.png',
-    programId: '65d862392b1da90018ad8f3b',
+    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/de06beef-a1fb-4056-9323-edd3cf10c518.png',
+    programId: '65dc6fbabb55350018d555b7',
     subcategories: [
       { id: 'all', name: 'All Concepts', keyword: '' },
       { id: 'physics', name: 'Physics', keyword: 'physics' },
@@ -136,8 +146,8 @@ const PI_CATEGORIES = [
     id: 'neet',
     name: 'NEET UG',
     tagline: 'NCERT Line-by-Line Biology, Chemistry & Medical Physics',
-    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/7b002496-c7a1-425f-b40a-bf7b944f7990.png',
-    programId: '65d75d320531c20018ade9bb',
+    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/aedad935-8809-413b-9bd7-365bea3352cc.png',
+    programId: '65dc6fbaf5bcd500180102cd',
     subcategories: [
       { id: 'all', name: 'All Medical', keyword: '' },
       { id: 'botany', name: 'Botany', keyword: 'botany' },
@@ -150,8 +160,8 @@ const PI_CATEGORIES = [
     id: 'class-12',
     name: 'Class 12',
     tagline: 'Boards + CUET + Competitive Concept Episodes',
-    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/63f4c892-62e2-406d-a07a-1b42a1b43b6b.png',
-    programId: '65d862392b1da90018ad8f3b',
+    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/de06beef-a1fb-4056-9323-edd3cf10c518.png',
+    programId: '65dc6fbabb55350018d555b7',
     subcategories: [
       { id: 'all', name: 'All Subjects', keyword: '' },
       { id: 'physics', name: 'Physics', keyword: 'physics' },
@@ -163,7 +173,7 @@ const PI_CATEGORIES = [
     id: 'class-11',
     name: 'Class 11',
     tagline: 'Strong Foundation Mechanics, GOC & Algebra',
-    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/4a6e3933-fc40-4c69-888b-bc5df0d8cd2a.png',
+    icon: 'https://d2bps9p1kiy4ka.cloudfront.net/5eb393ee95fab7468a79d189/61e8fafe-0891-4741-a76d-b3f7dedae5b7.png',
     programId: '676e4dee1ec923bc192f38c9',
     subcategories: [
       { id: 'all', name: 'All Subjects', keyword: '' },
@@ -176,8 +186,8 @@ const PI_CATEGORIES = [
     id: 'class-10',
     name: 'Class 10',
     tagline: 'Udaan CBSE & ICSE Board Concept Vault',
-    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/f32e58bb-4b4e-4b02-9a3c-4f25f3ed0b27.png',
-    programId: '65de115e0a24b4001870c17f',
+    icon: 'https://static.pw.live/5eb393ee95fab7468a79d189/ADMIN/414feae9-dd97-409e-b3eb-d4f87c358a74.png',
+    programId: '677b9f1967ac17b383bf24f1',
     subcategories: [
       { id: 'all', name: 'All Subjects', keyword: '' },
       { id: 'science', name: 'Science', keyword: 'science' },
@@ -725,19 +735,26 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
       }
 
       const rawSubjects: any[] = Array.isArray(details.subjects) ? details.subjects : [];
-      const subjects = rawSubjects
-        .filter((s) => s?._id && !/notice|guidance|orientation/i.test(String(s.subject || '')))
-        .map((s, i) => ({
-          _id: String(s._id),
-          name: String(s.subject || s.name || 'Subject'),
-          value: String(s.slug || s._id),
-          displayOrder: i + 1,
-        }));
+      const filteredRawSubjects = rawSubjects.filter(
+        (s) =>
+          s?._id &&
+          !/notice|guidance|orientation|telegram|webinar|planner|schedule|batch\s*info/i.test(
+            String(s.subject || '')
+          )
+      );
+      const effectiveSubjects = filteredRawSubjects.length > 0 ? filteredRawSubjects : rawSubjects.filter((s) => s?._id);
+
+      const subjects = effectiveSubjects.map((s, i) => ({
+        _id: String(s._id),
+        name: String(s.subject || s.name || 'Subject'),
+        value: String(s.slug || s._id),
+        displayOrder: i + 1,
+      }));
 
       const teacherMap = new Map<string, any>();
       const subjectPreviews: Record<string, any[]> = {};
 
-      for (const s of rawSubjects) {
+      for (const s of effectiveSubjects) {
         if (!s?._id) continue;
         const tList: any[] = Array.isArray(s.teacherIds) ? s.teacherIds : [];
         const chaptersForSubj: any[] = [];
@@ -891,9 +908,9 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
       tagType: 'UNITS',
       limit,
     });
-    const list: any[] = tRes.ok && Array.isArray(tRes.data) ? tRes.data : [];
+    const rawList: any[] = tRes.ok && Array.isArray(tRes.data) ? tRes.data : [];
     const seenTopicIds = new Set<string>();
-    const topics = list
+    const deduped = rawList
       .filter((t: any) => {
         if (!t?._id) return false;
         const id = String(t._id);
@@ -901,16 +918,30 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
         seenTopicIds.add(id);
         return true;
       })
-      .map((t: any, idx: number) => ({
+      .map((t: any) => ({
         _id: String(t._id),
         name: String(t.name || 'Chapter'),
         slug: t.slug,
-        chapter: `CH - ${String((page - 1) * limit + idx + 1).padStart(2, '0')}`,
-        displayOrder: idx + 1,
-        programId,
-        subjectId: resolvedSubjId,
-        chapterId,
+        videos: Number(t.videos || 0),
+        notes: Number(t.notes || 0),
+        exercises: Number(t.exercises || 0),
       }));
+
+    // Keep video-containing chapters ahead of PDF-only utility chapters (e.g. Mind Maps || Only PDF)
+    const videoFirst = [
+      ...deduped.filter((t) => t.videos > 0),
+      ...deduped.filter((t) => t.videos === 0 && (t.notes > 0 || t.exercises > 0)),
+      ...deduped.filter((t) => t.videos === 0 && t.notes === 0 && t.exercises === 0),
+    ];
+
+    const topics = videoFirst.map((t, idx) => ({
+      ...t,
+      chapter: `CH - ${String((page - 1) * limit + idx + 1).padStart(2, '0')}`,
+      displayOrder: idx + 1,
+      programId,
+      subjectId: resolvedSubjId,
+      chapterId,
+    }));
     return res.json({ success: true, topics, paginate: tRes.raw?.paginate || { totalCount: topics.length } });
   });
 
@@ -996,18 +1027,27 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
             name: vid.topic || vid.videoDetails?.name || 'Lecture',
             videoType: vid.urlType || 'penpencilvdo',
             videoUrl: vid.url || vid.videoDetails?.videoUrl || vid.videoDetails?.embedCode || '',
+            typeId: vid.typeId,
             createdAt: vid.startTime || vid.date,
             programId,
             subjectId: resolvedSubjId,
             chapterId,
             topicId,
             subTopicId,
-            videoDetails: vid.videoDetails || {
-              _id: vid._id,
-              id: vid._id,
-              name: vid.topic,
-              videoUrl: vid.url || '',
-            },
+            videoDetails: vid.videoDetails
+              ? {
+                  ...vid.videoDetails,
+                  _id: vid.videoDetails._id || vid.videoDetails.id || vid._id,
+                  id: vid.videoDetails.id || vid.videoDetails._id || vid._id,
+                  findKey: vid.videoDetails.findKey || vid.findKey,
+                }
+              : {
+                  _id: vid._id,
+                  id: vid._id,
+                  findKey: vid.findKey,
+                  name: vid.topic,
+                  videoUrl: vid.url || '',
+                },
           },
         });
       }

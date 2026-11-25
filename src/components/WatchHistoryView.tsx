@@ -95,9 +95,9 @@ export const WatchHistoryView: React.FC<WatchHistoryViewProps> = ({
               <div className="flex items-start gap-3">
                 <button
                   onClick={() => onPlayItem(item)}
-                  className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/20 hover:scale-105 active:scale-95 transition"
+                  className="sc-play-orb mt-0.5 h-11 w-11 shrink-0"
                 >
-                  <Play className="h-4 w-4 fill-white ml-0.5" />
+                  <Play className="h-4 w-4 fill-current ml-0.5" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-['Sora'] text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
@@ -137,9 +137,11 @@ export const WatchHistoryView: React.FC<WatchHistoryViewProps> = ({
               <div className="flex items-center gap-2 sm:self-center">
                 <button
                   onClick={() => onPlayItem(item)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90 transition active:scale-95"
+                  className="sc-play-btn px-4 py-2 text-xs"
                 >
-                  <Play className="h-3.5 w-3.5 fill-white" />
+                  <span className="sc-play-btn-badge h-5 w-5">
+                    <Play className="h-3 w-3 fill-current ml-0.5" />
+                  </span>
                   <span>Resume</span>
                 </button>
               </div>

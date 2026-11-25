@@ -376,7 +376,7 @@ export const LectureDownloadCenter: React.FC = () => {
                                       mimeType: job.format === 'm4a' ? 'audio/mp4' : 'video/mp4',
                                     })
                                   }
-                                  className="flex items-center gap-1 rounded-lg bg-[var(--primary-color)] px-2.5 py-1 text-[11px] font-bold text-white hover:opacity-90 transition"
+                                  className="sc-play-btn !rounded-lg !px-2.5 !py-1 text-[11px]"
                                 >
                                   <Play className="h-3 w-3 fill-current" />
                                   <span>Play</span>

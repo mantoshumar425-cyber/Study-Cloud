@@ -557,6 +557,84 @@ export function createApiApp(): express.Express {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  function inferExamFromTitle(name: string): string {
+    const n = name.toLowerCase();
+    if (/iit[\s-]*jee|\bjee\b|prayas|arjuna jee|lakshya jee|manzil/i.test(n)) return 'IIT-JEE';
+    if (/\bneet\b|yakeen|arjuna neet|lakshya neet|umeed|pnst|nursing/i.test(n)) return 'NEET';
+    if (/\bupsc\b|ias\b|csat|sankalp|prahar/i.test(n)) return 'UPSC';
+    if (/\bclat\b|law\b/i.test(n)) return 'CLAT';
+    if (/\bssc\b|cgl|chsl|mts|railways/i.test(n)) return 'SSC';
+    if (/\bgate\b/i.test(n)) return 'GATE';
+    if (/\bnda\b|\bcds\b|defence|afcat/i.test(n)) return 'Defence';
+    if (/\bcommerce\b|\bca\b|cuet/i.test(n)) return 'Commerce';
+    if (/class[\s-]*(9|10|11|12)|udaan|neev|board|project\s*(45|60)/i.test(n)) return 'Boards';
+    return '';
+  }
+
+  function inferClassFromTitle(name: string): string {
+    const n = name.toLowerCase();
+    if (/dropper|prayas|yakeen|12\+/i.test(n)) return 'Dropper';
+    if (/class[\s-]*12\b|\b12th\b|lakshya/i.test(n)) return '12';
+    if (/class[\s-]*11\b|\b11th\b|arjuna/i.test(n)) return '11';
+    if (/class[\s-]*10\b|\b10th\b|udaan/i.test(n)) return '10';
+    if (/class[\s-]*9\b|\b9th\b|neev/i.test(n)) return '9';
+    return '';
+  }
+
+  function parseIsoDateSafe(raw: any, fallbackIso = ''): string {
+    if (!raw) return fallbackIso;
+    const str = String(raw).trim();
+    if (!str) return fallbackIso;
+    const ms = Date.parse(str);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+    return fallbackIso;
+  }
+
+  function normalizeExternalBatch(b: any, isVidyapeeth = false, defaultDateIso = ''): any | null {
+    const batchId = String(b?.batch_id || b?._id || b?.id || '').trim();
+    const name = String(b?.name || b?.batchName || '').trim();
+    if (!batchId || !name) return null;
+
+    let photo = '';
+    if (typeof b?.photo === 'string' && b.photo) photo = b.photo;
+    else if (typeof b?.imageUrl === 'string' && b.imageUrl) photo = b.imageUrl;
+    else if (typeof b?.previewImage === 'string' && b.previewImage) photo = b.previewImage;
+    else if (b?.previewImage?.baseUrl && b?.previewImage?.key) {
+      photo = `${b.previewImage.baseUrl}${b.previewImage.key}`;
+    }
+
+    const exam = String(b?.exam || '').trim() || inferExamFromTitle(name);
+    const cls = String(b?.class || b?.className || '').trim() || inferClassFromTitle(name);
+
+    return {
+      batch_id: batchId,
+      name,
+      byName: String(b?.byName || (b?.slug ? '' : 'PW StudyParcham Batch')).trim(),
+      language: String(b?.language || 'Hinglish').trim(),
+      exam,
+      photo,
+      class: cls,
+      start_date: parseIsoDateSafe(b?.start_date || b?.startDate, defaultDateIso),
+      end_date: parseIsoDateSafe(b?.end_date || b?.endDate, ''),
+      amount: Number(b?.amount ?? b?.feeTotal ?? 0) || 0,
+      ...(isVidyapeeth ? { isVidyapeeth: true } : {}),
+    };
+  }
+
+  async function fetchJsonSafe(url: string, headers: Record<string, string> = {}, timeoutMs = 15000): Promise<any | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { signal: controller.signal, headers });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function ensureBatchesCatalog(): Promise<{ batches: any[]; vidyapeeth: any[]; rawPayload: any }> {
     if (cachedBatchesPayload && Date.now() - batchesFetchedAt < BATCHES_TTL_MS) {
       return {
@@ -565,10 +643,25 @@ export function createApiApp(): express.Express {
         rawPayload: cachedBatchesPayload,
       };
     }
-    const r = await fetch(`https://studystark.github.io/batches/batches.json?_t=${Date.now()}`, {
-      headers: { 'User-Agent': USER_AGENT },
-    });
-    if (!r.ok) {
+
+    const spHeaders = {
+      'User-Agent': USER_AGENT,
+      Referer: 'https://pw.studyparcham.in/',
+    };
+
+    const [ssRes, spApiRes, spBatchaRes, spAllRes] = await Promise.allSettled([
+      fetchJsonSafe(`https://studystark.github.io/batches/batches.json?_t=${Date.now()}`, { 'User-Agent': USER_AGENT }, 18000),
+      fetchJsonSafe('https://pw.studyparcham.in/api/batches', spHeaders, 10000),
+      fetchJsonSafe('https://pw.studyparcham.in/data/batcha.json', spHeaders, 18000),
+      fetchJsonSafe('https://pw.studyparcham.in/data/allbatches.json', spHeaders, 18000),
+    ]);
+
+    const ssJson = ssRes.status === 'fulfilled' ? ssRes.value : null;
+    const spApiJson = spApiRes.status === 'fulfilled' ? spApiRes.value : null;
+    const spBatchaJson = spBatchaRes.status === 'fulfilled' ? spBatchaRes.value : null;
+    const spAllJson = spAllRes.status === 'fulfilled' ? spAllRes.value : null;
+
+    if (!ssJson && !spBatchaJson && !spAllJson && !spApiJson) {
       if (cachedBatchesPayload) {
         return {
           batches: cachedBatchesPayload.data || [],
@@ -576,13 +669,64 @@ export function createApiApp(): express.Express {
           rawPayload: cachedBatchesPayload,
         };
       }
-      throw new Error(`Failed to load batches catalog (${r.status})`);
+      throw new Error('Failed to load batches catalog from upstreams');
     }
-    const json = (await r.json()) as any;
+
+    const batchMap = new Map<string, any>();
+    const vidyapeethMap = new Map<string, any>();
+
+    const upsertBatch = (targetMap: Map<string, any>, rawItem: any, isVp = false, defaultDateIso = '') => {
+      const item = normalizeExternalBatch(rawItem, isVp, defaultDateIso);
+      if (!item) return;
+      const existing = targetMap.get(item.batch_id);
+      if (!existing) {
+        targetMap.set(item.batch_id, item);
+      } else {
+        targetMap.set(item.batch_id, {
+          ...item,
+          ...existing,
+          photo: existing.photo || item.photo,
+          exam: existing.exam || item.exam,
+          class: existing.class || item.class,
+          byName: existing.byName || item.byName,
+          start_date: existing.start_date || item.start_date,
+          end_date: existing.end_date || item.end_date,
+          amount: existing.amount || item.amount,
+        });
+      }
+    };
+
+    // 1. Base catalog from StudyStark
+    for (const b of ssJson?.data || []) upsertBatch(batchMap, b, false);
+    for (const b of ssJson?.vidyapeeth_batches || []) upsertBatch(vidyapeethMap, b, true);
+
+    // 2. StudyParcham batcha.json (includes newer PW + Vidyapeeth batches missing in StudyStark)
+    const spBatchaMain = Array.isArray(spBatchaJson)
+      ? spBatchaJson
+      : spBatchaJson?.data || spBatchaJson?.batches || [];
+    for (const b of spBatchaMain) upsertBatch(batchMap, b, false);
+    for (const b of spBatchaJson?.vidyapeeth_batches || []) upsertBatch(vidyapeethMap, b, true);
+
+    // 3. StudyParcham allbatches.json
+    const spAllMain = Array.isArray(spAllJson)
+      ? spAllJson
+      : spAllJson?.batches || spAllJson?.data || [];
+    for (const b of spAllMain) upsertBatch(batchMap, b, false);
+
+    // 4. StudyParcham /api/batches (featured latest launches - keep fresh date fallback so newest appear first)
+    const spApiMain = Array.isArray(spApiJson)
+      ? spApiJson
+      : spApiJson?.data || spApiJson?.batches || [];
+    const nowBase = Date.now();
+    spApiMain.forEach((b: any, i: number) => {
+      const freshIso = new Date(nowBase - i * 60000).toISOString();
+      upsertBatch(batchMap, b, false, freshIso);
+    });
+
     const normalized = {
-      ...json,
-      data: sortBatchesNewestFirst(json?.data || []),
-      vidyapeeth_batches: sortBatchesNewestFirst(json?.vidyapeeth_batches || []),
+      success: true,
+      data: sortBatchesNewestFirst(Array.from(batchMap.values())),
+      vidyapeeth_batches: sortBatchesNewestFirst(Array.from(vidyapeethMap.values())),
     };
     cachedBatchesPayload = normalized;
     batchesFetchedAt = Date.now();
@@ -1882,6 +2026,8 @@ export function createApiApp(): express.Express {
 
       res.setHeader('Content-Type', contentType.includes('pdf') ? contentType : 'application/pdf');
       res.setHeader('Content-Length', String(buf.length));
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Length');
       res.setHeader(
         'Content-Disposition',
         `${download ? 'attachment' : 'inline'}; filename="${fileName.replace(/"/g, '')}"`

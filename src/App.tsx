@@ -55,6 +55,7 @@ import { TestView } from './components/TestView';
 import { LectureDownloadCenter } from './components/LectureDownloadCenter';
 import { DownloadsView } from './components/DownloadsView';
 import { ShareWebsiteModal } from './components/ShareWebsiteModal';
+import { PdfViewerModal } from './components/PdfViewerModal';
 import { registerDownloadActionHandlers } from './services/lectureDownloadManager';
 import {
   listOfflineLectureMeta,
@@ -569,8 +570,9 @@ export default function App() {
           /* VIEW 5: BATCHES & SEARCH */
           <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5 space-y-5">
             {/* Batch Adventure & Streak Hub */}
-            <div className="relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-6 shadow-sm">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="relative overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--card-bg)] via-[var(--card-bg)] to-[var(--primary-color)]/10 p-4 sm:p-6 shadow-sm">
+              <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-[var(--primary-color)]/15 blur-3xl" />
+              <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]">
                     <span className="font-bold text-[var(--primary-color)]">
@@ -923,6 +925,9 @@ export default function App() {
 
       {/* Global Lecture Download Center (Quality Picker + Progress Queue) */}
       <LectureDownloadCenter />
+
+      {/* Global In-App PDF Reader Modal */}
+      <PdfViewerModal />
 
         {/* Mobile Bottom Navigation */}
         <BottomNav

@@ -148,9 +148,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => handleNav(item.id)}
                 title={compact ? item.label : undefined}
-                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition ${
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-all ${
                   isActive
-                    ? 'bg-[var(--primary-color)] text-white shadow-sm'
+                    ? 'bg-gradient-to-r from-[var(--primary-color)] to-[var(--accent-color)] text-white shadow-md shadow-indigo-500/20'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
                 } ${compact ? 'justify-center px-2' : ''}`}
               >

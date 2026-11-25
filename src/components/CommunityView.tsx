@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { AppControls, BatchItem } from '../types';
 import {
-  buildPdfProxyUrl,
   fetchPwCommunityFeed,
+  openPdfViewer,
   PwCommunityChannel,
   PwCommunityPost,
 } from '../services/batchService';
@@ -357,15 +357,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       </button>
 
                       {item.attachmentUrl && (
-                        <a
-                          href={buildPdfProxyUrl(item.attachmentUrl, item.attachmentName || 'notice')}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openPdfViewer(item.attachmentUrl!, item.attachmentName || 'Notice.pdf')}
                           className="flex items-center gap-1 text-xs font-bold text-emerald-400 hover:underline"
                         >
                           <FileText className="h-3.5 w-3.5" />
                           <span>View Notice PDF</span>
-                        </a>
+                        </button>
                       )}
                     </div>
 

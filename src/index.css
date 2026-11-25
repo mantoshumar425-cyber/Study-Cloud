@@ -18,8 +18,13 @@
 
 body {
   background-color: var(--bg-primary);
+  background-image: radial-gradient(
+    ellipse 85% 45% at 50% -10%,
+    rgba(var(--primary-color-rgb), 0.11),
+    transparent 65%
+  );
   color: var(--text-primary);
-  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   transition: background-color 0.25s ease, color 0.25s ease;
   overflow-x: hidden;
@@ -142,7 +147,135 @@ body.light {
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-tertiary: #94a3b8;
-  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --card-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+}
+
+/* Signature Video Play Buttons & Orbs */
+.sc-play-orb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 10px 24px -4px rgba(var(--primary-color-rgb), 0.55),
+    0 0 0 4px rgba(var(--primary-color-rgb), 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  transition:
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.24s ease,
+    filter 0.2s ease;
+}
+
+.group:hover .sc-play-orb,
+.sc-play-orb:hover {
+  transform: scale(1.1);
+  box-shadow:
+    0 14px 30px -4px rgba(var(--primary-color-rgb), 0.72),
+    0 0 0 7px rgba(var(--primary-color-rgb), 0.28),
+    inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  filter: brightness(1.06);
+}
+
+.sc-play-orb:active {
+  transform: scale(0.94);
+}
+
+.sc-play-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 8px 20px -5px rgba(var(--primary-color-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s ease,
+    filter 0.2s ease;
+}
+
+.sc-play-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, 0.22) 50%, transparent 75%);
+  transform: translateX(-110%);
+  transition: transform 0.55s ease;
+  pointer-events: none;
+}
+
+.sc-play-btn:hover::after {
+  transform: translateX(110%);
+}
+
+.sc-play-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 26px -5px rgba(var(--primary-color-rgb), 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  filter: brightness(1.06);
+}
+
+.sc-play-btn:active {
+  transform: scale(0.96);
+}
+
+.sc-play-btn-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.35);
+}
+
+.sc-play-hero {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: #ffffff;
+  border: 2.5px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 18px 40px -6px rgba(var(--primary-color-rgb), 0.72),
+    0 0 0 8px rgba(255, 255, 255, 0.14),
+    inset 0 2px 3px rgba(255, 255, 255, 0.5);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
+}
+
+.sc-play-hero:hover {
+  transform: scale(1.07);
+  box-shadow:
+    0 22px 46px -6px rgba(var(--primary-color-rgb), 0.85),
+    0 0 0 12px rgba(255, 255, 255, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.65);
+}
+
+.sc-play-hero:active {
+  transform: scale(0.93);
+}
+
+/* Cyberpunk text contrast guard */
+body.cyberpunk-neon .sc-play-orb,
+body.cyberpunk-neon .sc-play-btn,
+body.cyberpunk-neon .sc-play-hero {
+  color: #071018;
 }
 
 /* Custom modern scrollbars */

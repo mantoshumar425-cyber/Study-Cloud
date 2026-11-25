@@ -374,7 +374,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                   {/* Play overlay */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/95 text-slate-950 shadow-xl transition group-hover:scale-110">
+                    <div className="sc-play-orb h-13 w-13">
                       <Play className="h-5 w-5 fill-current ml-0.5" />
                     </div>
                   </div>
@@ -420,9 +420,11 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onPlayOffline(item)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3 py-2 text-xs font-bold text-white hover:opacity-90 transition"
+                      className="sc-play-btn flex-1 justify-center px-3 py-2 text-xs"
                     >
-                      <Play className="h-3.5 w-3.5 fill-current" />
+                      <span className="sc-play-btn-badge h-5 w-5">
+                        <Play className="h-3 w-3 fill-current ml-0.5" />
+                      </span>
                       <span>Play Offline</span>
                     </button>
 

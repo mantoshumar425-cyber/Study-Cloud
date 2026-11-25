@@ -32,12 +32,12 @@ import {
 } from '../types';
 import {
   askPwPi,
-  buildPdfProxyUrl,
   downloadPdfFile,
   fetchPiOttCategories,
   fetchPiOttHome,
   fetchPiOttSeriesDetail,
   fetchPiOttTeacherProfile,
+  openPdfViewer,
   prefetchPiHome,
   resolveAttachmentUrl,
   startPwQuiz,
@@ -600,9 +600,11 @@ export const PiView: React.FC<PiViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenSeries(currentHero)}
-                        className="flex items-center gap-2 rounded-xl bg-[var(--primary-color)] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-95 transition"
+                        className="sc-play-btn px-5 py-2.5 text-xs sm:text-sm"
                       >
-                        <Play className="h-4 w-4 fill-white" />
+                        <span className="sc-play-btn-badge h-6 w-6">
+                          <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                        </span>
                         <span>Watch Concept Series</span>
                       </button>
                       <button
@@ -696,8 +698,8 @@ export const PiView: React.FC<PiViewProps> = ({
                           </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                        <span className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow">
-                          <Play className="h-3.5 w-3.5 fill-white ml-0.5" />
+                        <span className="sc-play-orb absolute bottom-2 right-2 h-8 w-8">
+                          <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
                         </span>
                       </div>
                       <div className="p-2.5">
@@ -864,8 +866,8 @@ export const PiView: React.FC<PiViewProps> = ({
                         </div>
                       )}
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary-color)] text-white shadow-lg">
-                          <Play className="h-4 w-4 fill-white ml-0.5" />
+                        <div className="sc-play-orb h-11 w-11">
+                          <Play className="h-4 w-4 fill-current ml-0.5" />
                         </div>
                       </div>
                     </div>
@@ -921,9 +923,11 @@ export const PiView: React.FC<PiViewProps> = ({
                         type="button"
                         disabled={Boolean(loadingQuizId)}
                         onClick={() => handleLaunchPiQuiz(card)}
-                        className="flex items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition"
+                        className="sc-play-btn justify-center px-4 py-2 text-xs"
                       >
-                        {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-white" />}
+                        <span className="sc-play-btn-badge h-5 w-5">
+                          {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current ml-0.5" />}
+                        </span>
                         <span>{isBusy ? 'Preparing CBT...' : 'Attempt Now'}</span>
                       </button>
                     </div>
@@ -1148,8 +1152,8 @@ export const PiView: React.FC<PiViewProps> = ({
                             className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3 cursor-pointer hover:border-[var(--primary-color)] transition"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-color)]/15 text-[var(--primary-color)]">
-                                <Play className="h-4 w-4 fill-current" />
+                              <div className="sc-play-orb h-10 w-10 shrink-0">
+                                <Play className="h-4 w-4 fill-current ml-0.5" />
                               </div>
                               <div className="min-w-0">
                                 <div className="font-['Sora'] text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
@@ -1185,8 +1189,11 @@ export const PiView: React.FC<PiViewProps> = ({
                               >
                                 <Download className="h-3.5 w-3.5" />
                               </button>
-                              <span className="shrink-0 rounded-xl bg-[var(--primary-color)] px-3 py-1.5 text-xs font-bold text-white">
-                                Watch
+                              <span className="sc-play-btn shrink-0 px-3 py-1.5 text-xs">
+                                <span className="sc-play-btn-badge h-5 w-5">
+                                  <Play className="h-3 w-3 fill-current ml-0.5" />
+                                </span>
+                                <span>Watch</span>
                               </span>
                             </div>
                           </div>
@@ -1337,8 +1344,10 @@ export const PiView: React.FC<PiViewProps> = ({
                             >
                               <Download className="h-3.5 w-3.5" />
                             </button>
-                            <span className="flex shrink-0 items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3.5 py-2 text-xs font-bold text-white">
-                              <Play className="h-3.5 w-3.5 fill-white" />
+                            <span className="sc-play-btn shrink-0 px-3.5 py-1.5 text-xs">
+                              <span className="sc-play-btn-badge h-5 w-5">
+                                <Play className="h-3 w-3 fill-current ml-0.5" />
+                              </span>
                               <span>Play</span>
                             </span>
                           </div>
@@ -1371,14 +1380,13 @@ export const PiView: React.FC<PiViewProps> = ({
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  <a
-                                    href={buildPdfProxyUrl(directUrl, name, false)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)]"
+                                  <button
+                                    type="button"
+                                    onClick={() => openPdfViewer(directUrl, name)}
+                                    className="rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                                   >
                                     View
-                                  </a>
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => downloadPdfFile(directUrl, name)}

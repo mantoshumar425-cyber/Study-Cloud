@@ -266,6 +266,9 @@ export interface KhazanaTopic {
   programId?: string;
   subjectId?: string;
   chapterId?: string;
+  videos?: number;
+  notes?: number;
+  exercises?: number;
 }
 
 export interface KhazanaSubTopic {
@@ -287,6 +290,7 @@ export interface KhazanaContentItem {
     name?: string;
     videoType?: string;
     videoUrl?: string;
+    typeId?: string;
     createdAt?: string;
     programId?: string;
     subjectId?: string;

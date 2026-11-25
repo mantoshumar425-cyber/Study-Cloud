@@ -20,9 +20,9 @@ import {
 } from 'lucide-react';
 import { BatchItem, OfficialBatchTest } from '../types';
 import {
-  buildPdfProxyUrl,
   downloadPdfFile,
   fetchPwBatchQuizzes,
+  openPdfViewer,
   PwBatchQuizItem,
   safeReadJson,
   startPwQuiz,
@@ -1006,15 +1006,14 @@ export const TestView: React.FC<TestViewProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-2.5">
                       {t.pdfUrl ? (
                         <div className="flex items-center gap-1.5">
-                          <a
-                            href={buildPdfProxyUrl(t.pdfUrl, t.pdfName || 'Test Syllabus.pdf', false)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)]"
+                          <button
+                            type="button"
+                            onClick={() => openPdfViewer(t.pdfUrl!, t.pdfName || 'Test Syllabus.pdf')}
+                            className="flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
                           >
                             <Eye className="h-3.5 w-3.5 text-indigo-400" />
                             <span>Syllabus</span>
-                          </a>
+                          </button>
                           <button
                             type="button"
                             onClick={() => downloadPdfFile(t.pdfUrl!, t.pdfName || 'Test Syllabus.pdf')}
@@ -1034,9 +1033,11 @@ export const TestView: React.FC<TestViewProps> = ({
                         type="button"
                         disabled={Boolean(launchingQuizId)}
                         onClick={() => handleLaunchOfficialTest(t)}
-                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition whitespace-nowrap"
+                        className="sc-play-btn shrink-0 px-3.5 py-1.5 text-xs whitespace-nowrap"
                       >
-                        {isLaunching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 fill-white" />}
+                        <span className="sc-play-btn-badge h-5 w-5">
+                          {isLaunching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current ml-0.5" />}
+                        </span>
                         <span>{isLaunching ? 'Starting...' : 'Attempt Official'}</span>
                       </button>
                     </div>
@@ -1089,13 +1090,15 @@ export const TestView: React.FC<TestViewProps> = ({
                       type="button"
                       disabled={Boolean(launchingQuizId)}
                       onClick={() => handleLaunchPwQuiz(quiz)}
-                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition whitespace-nowrap"
+                      className="sc-play-btn shrink-0 px-3.5 py-1.5 text-xs whitespace-nowrap"
                     >
-                      {isLaunching ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5 fill-white" />
-                      )}
+                      <span className="sc-play-btn-badge h-5 w-5">
+                        {isLaunching ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Play className="h-3 w-3 fill-current ml-0.5" />
+                        )}
+                      </span>
                       <span>{isLaunching ? 'Loading CBT...' : 'Attempt Quiz'}</span>
                     </button>
                   </div>
@@ -1214,9 +1217,11 @@ export const TestView: React.FC<TestViewProps> = ({
                 <button
                   type="button"
                   onClick={() => startPack(pack)}
-                  className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 transition"
+                  className="sc-play-btn px-3.5 py-1.5 text-xs"
                 >
-                  <Play className="h-3.5 w-3.5 fill-white" />
+                  <span className="sc-play-btn-badge h-5 w-5">
+                    <Play className="h-3 w-3 fill-current ml-0.5" />
+                  </span>
                   <span>Start Test</span>
                 </button>
               </div>
