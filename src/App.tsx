@@ -35,7 +35,6 @@ import {
 } from './services/adventureService';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { Header } from './components/Header';
-import { BottomNav } from './components/BottomNav';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { BatchCard } from './components/BatchCard';
 import { BatchDetailsModal } from './components/BatchDetailsModal';
@@ -51,16 +50,19 @@ import { Sidebar } from './components/Sidebar';
 import { PiView } from './components/PiView';
 import { CommunityView } from './components/CommunityView';
 import { TestView } from './components/TestView';
+import { LeaderboardView } from './components/LeaderboardView';
 import { LectureDownloadCenter } from './components/LectureDownloadCenter';
 import { DownloadsView } from './components/DownloadsView';
 import { ShareWebsiteModal } from './components/ShareWebsiteModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
+import { FloatingStudyAi } from './components/FloatingStudyAi';
 import { registerDownloadActionHandlers } from './services/lectureDownloadManager';
 import {
   listOfflineLectureMeta,
   OfflineLectureMeta,
   subscribeOfflineVault,
 } from './services/offlineLectureDb';
+import { syncLeaderboardScore } from './services/adventureService';
 
 const VALID_NAV_TABS: NavTab[] = [
   'batches',
@@ -68,6 +70,7 @@ const VALID_NAV_TABS: NavTab[] = [
   'pi',
   'community',
   'test',
+  'leaderboard',
   'downloads',
   'favorites',
   'history',
@@ -214,6 +217,10 @@ export default function App() {
   };
 
   const adventureMetrics = useMemo(() => getAdventureMetrics(adventureState), [adventureState]);
+
+  useEffect(() => {
+    void syncLeaderboardScore(adventureState).catch(() => {});
+  }, [adventureState]);
 
   const myBatches = useMemo(() => {
     const enrolledSet = new Set(adventureState.enrolledBatchIds);
@@ -391,7 +398,7 @@ export default function App() {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 pb-16 lg:pb-6">
+        <main className="flex-1 pb-6">
           {currentTab === 'pi' ? (
             /* VIEW 1A: PW PI PRO (OTT) WORKSPACE */
             <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
@@ -438,6 +445,17 @@ export default function App() {
                 myBatches={myBatches}
                 allBatches={allBatches}
                 onActivityUpdate={() => setAdventureState(getAdventureState())}
+              />
+            </div>
+          ) : currentTab === 'leaderboard' ? (
+            /* VIEW 1C2: TOTAL XP LEADERBOARD */
+            <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
+              <LeaderboardView
+                adventureState={adventureState}
+                onBrowseBatches={() => {
+                  setCurrentTab('batches');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
               />
             </div>
           ) : currentTab === 'khazana' ? (
@@ -578,13 +596,21 @@ export default function App() {
                       </div>
                       <div className="text-[11px] text-[var(--text-secondary)]">Streak</div>
                     </div>
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentTab('leaderboard');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="rounded-lg hover:bg-emerald-500/10 px-1.5 py-0.5 transition cursor-pointer"
+                      title="View Total XP Leaderboard"
+                    >
                       <div className="flex items-center justify-center gap-1 font-mono tabular-nums text-base sm:text-lg font-extrabold text-emerald-400">
                         <Trophy className="h-4 w-4" />
                         <span>{adventureMetrics.xp}</span>
                       </div>
-                      <div className="text-[11px] text-[var(--text-secondary)]">Total XP</div>
-                    </div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">Total XP · Rank</div>
+                    </button>
                     <div>
                       <div className="font-mono tabular-nums text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
                         {adventureMetrics.completedCount}
@@ -905,15 +931,8 @@ export default function App() {
       {/* Global In-App PDF Reader Modal */}
       <PdfViewerModal />
 
-        {/* Mobile Bottom Navigation */}
-        <BottomNav
-          currentTab={currentTab}
-          onTabChange={(tab) => {
-            setCurrentTab(tab);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          onOpenSlidebar={() => setIsMobileSidebarOpen(true)}
-        />
+      {/* Draggable Floating AI Icon on Home Screen */}
+      {!activeLecture && <FloatingStudyAi />}
       </div>
     </div>
   );

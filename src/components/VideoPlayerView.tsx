@@ -19,7 +19,6 @@ import {
   Download,
   X,
   CheckCircle2,
-  Sparkles,
   Smartphone,
   Expand,
   Lock,
@@ -86,6 +85,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const hideTimerRef = useRef<number | null>(null);
   const seekFeedbackTimerRef = useRef<number | null>(null);
   const offlineBlobUrlRef = useRef<string | null>(null);
+  const scrubBarRef = useRef<HTMLDivElement>(null);
 
   // Stream resolution state
   const [resolving, setResolving] = useState(true);
@@ -103,6 +103,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [seekToast, setSeekToast] = useState<string | null>(null);
   const [hoverTime, setHoverTime] = useState<{ ratio: number; time: number } | null>(null);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
   // Fullscreen, Landscape & Scaling state
@@ -608,9 +610,69 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   const attachments = streamData?.attachments || [];
-  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const effectiveTime = scrubTime !== null ? scrubTime : currentTime;
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (effectiveTime / duration) * 100)) : 0;
   const isHudVisible =
-    !isLocked && (controlsVisible || !isPlaying || showSettingsMenu || showMoreMenu);
+    !isLocked && (controlsVisible || !isPlaying || showSettingsMenu || showMoreMenu || isScrubbing);
+
+  const getScrubRatio = useCallback(
+    (clientX: number, clientY: number) => {
+      const bar = scrubBarRef.current;
+      if (!bar) return 0;
+      const rect = bar.getBoundingClientRect();
+      if (isCssRotatedLandscape) {
+        if (!rect.height) return 0;
+        return Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+      }
+      if (!rect.width) return 0;
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    },
+    [isCssRotatedLandscape]
+  );
+
+  const handleScrubPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!duration) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const updateAtPointer = (clientX: number, clientY: number, commit: boolean) => {
+        const ratio = getScrubRatio(clientX, clientY);
+        const targetTime = ratio * duration;
+        setScrubTime(targetTime);
+        setHoverTime({ ratio, time: targetTime });
+        if (commit && videoRef.current) {
+          videoRef.current.currentTime = targetTime;
+          setCurrentTime(targetTime);
+        }
+        return targetTime;
+      };
+
+      setIsScrubbing(true);
+      updateAtPointer(e.clientX, e.clientY, true);
+      revealControls();
+
+      const onMove = (ev: PointerEvent) => {
+        updateAtPointer(ev.clientX, ev.clientY, true);
+      };
+
+      const onUp = (ev: PointerEvent) => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        updateAtPointer(ev.clientX, ev.clientY, true);
+        setIsScrubbing(false);
+        setScrubTime(null);
+        setHoverTime(null);
+        revealControls();
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    },
+    [duration, getScrubRatio, revealControls]
+  );
 
   return (
     <div
@@ -663,7 +725,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white hover:bg-[#E50914]/25 hover:text-[#ff4d57] active:scale-95 transition"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white hover:bg-[#16A34A]/25 hover:text-[#4ade80] active:scale-95 transition"
               title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Back'}
             >
               <ArrowLeft className="h-5 w-5" />
@@ -683,8 +745,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               }}
               className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
                 showMoreMenu
-                  ? 'bg-[#E50914] text-white'
-                  : 'text-white hover:bg-[#E50914]/25 hover:text-[#ff4d57]'
+                  ? 'bg-[#16A34A] text-white'
+                  : 'text-white hover:bg-[#16A34A]/25 hover:text-[#4ade80]'
               }`}
               title="More options"
             >
@@ -714,9 +776,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         resolvedStream: streamData,
                       });
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#16A34A]/20"
                   >
-                    <Download className="h-4 w-4 text-[#E50914]" />
+                    <Download className="h-4 w-4 text-[#16A34A]" />
                     <span>Download Lecture (MP4/Audio)</span>
                   </button>
                 )}
@@ -734,10 +796,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     onAdventureUpdate?.();
                     setShowMoreMenu(false);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#16A34A]/20"
                 >
                   <CheckCircle2
-                    className={`h-4 w-4 ${completed ? 'text-emerald-400' : 'text-[#E50914]'}`}
+                    className={`h-4 w-4 ${completed ? 'text-emerald-400' : 'text-[#16A34A]'}`}
                   />
                   <span>{completed ? 'Lecture Cleared (+50 XP)' : 'Mark Lecture Complete'}</span>
                 </button>
@@ -747,9 +809,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     setFillMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
                     setShowMoreMenu(false);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#16A34A]/20"
                 >
-                  <Expand className="h-4 w-4 text-[#E50914]" />
+                  <Expand className="h-4 w-4 text-[#16A34A]" />
                   <span>Screen Scaling: {fillMode === 'cover' ? 'Fill' : 'Fit'}</span>
                 </button>
 
@@ -758,15 +820,15 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     setShowMoreMenu(false);
                     toggleLandscapeRotate();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#16A34A]/20"
                 >
-                  <Smartphone className="h-4 w-4 -rotate-90 text-[#E50914]" />
+                  <Smartphone className="h-4 w-4 -rotate-90 text-[#16A34A]" />
                   <span>{forceCssLandscape ? 'Exit Landscape Rotate' : 'Rotate to Landscape'}</span>
                 </button>
 
                 <div className="my-1 border-t border-white/10" />
                 <div className="px-3 py-1 text-[11px] font-bold text-neutral-400 flex items-center gap-1.5">
-                  <Moon className="h-3.5 w-3.5 text-[#E50914]" />
+                  <Moon className="h-3.5 w-3.5 text-[#16A34A]" />
                   <span>Sleep Timer {sleepTimerMinutes ? `(${sleepTimerMinutes}m)` : ''}</span>
                 </div>
                 <div className="grid grid-cols-4 gap-1 px-2 pb-1">
@@ -779,8 +841,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                       }}
                       className={`rounded-md py-1.5 font-mono text-[11px] font-bold transition ${
                         sleepTimerMinutes === mins
-                          ? 'bg-[#E50914] text-white'
-                          : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                          ? 'bg-[#16A34A] text-white'
+                          : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
                       }`}
                     >
                       {mins}m
@@ -802,8 +864,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             }}
             className={`absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95 ${
               isLocked
-                ? 'border-[#E50914] bg-[#E50914] text-white shadow-[0_0_20px_rgba(229,9,20,0.6)]'
-                : 'border-white/30 bg-black/55 text-white hover:border-[#E50914] hover:bg-[#E50914]/85'
+                ? 'border-[#16A34A] bg-[#16A34A] text-white shadow-[0_0_20px_rgba(34,197,94,0.6)]'
+                : 'border-white/30 bg-black/55 text-white hover:border-[#16A34A] hover:bg-[#16A34A]/85'
             }`}
             title={isLocked ? 'Unlock Player Controls' : 'Lock Screen Controls'}
           >
@@ -814,14 +876,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         {/* Loading State */}
         {resolving ? (
           <div className="flex flex-col items-center gap-3 text-center p-6">
-            <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
+            <Loader2 className="h-12 w-12 animate-spin text-[#16A34A]" />
             <p className="text-sm sm:text-base font-medium text-neutral-200">
               Loading Lecture...
             </p>
           </div>
         ) : resolveError ? (
           <div className="flex flex-col items-center gap-3.5 text-center p-6 max-w-md">
-            <AlertTriangle className="h-12 w-12 text-[#E50914]" />
+            <AlertTriangle className="h-12 w-12 text-[#16A34A]" />
             <h3 className="font-['Sora'] text-lg font-bold text-white">
               Could Not Play Video
             </h3>
@@ -832,7 +894,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   e.stopPropagation();
                   loadStream();
                 }}
-                className="rounded-lg bg-[#E50914] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition shadow-lg"
+                className="rounded-lg bg-[#16A34A] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#22C55E] transition shadow-lg"
               >
                 Retry Stream
               </button>
@@ -918,7 +980,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   e.stopPropagation();
                   togglePlayPause();
                 }}
-                className="pointer-events-auto absolute z-10 flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-[#E50914] text-white shadow-[0_0_32px_rgba(229,9,20,0.65)] hover:bg-[#f40612] hover:scale-105 active:scale-95 transition"
+                className="pointer-events-auto absolute z-10 flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-[#16A34A] text-white shadow-[0_0_32px_rgba(34,197,94,0.65)] hover:bg-[#22C55E] hover:scale-105 active:scale-95 transition"
                 title="Play Lecture"
               >
                 <Play className="h-8 w-8 sm:h-9 sm:w-9 fill-current ml-1" />
@@ -927,7 +989,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
             {/* Quick Seek Toast */}
             {seekToast && (
-              <div className="pointer-events-none absolute top-20 z-20 rounded-full bg-[#E50914] px-4 py-1.5 font-mono text-xs sm:text-sm font-bold text-white shadow-xl">
+              <div className="pointer-events-none absolute top-20 z-20 rounded-full bg-[#16A34A] px-4 py-1.5 font-mono text-xs sm:text-sm font-bold text-white shadow-xl">
                 {seekToast}
               </div>
             )}
@@ -935,7 +997,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {/* Red Buffering Spinner ("Loading Lecture...") */}
             {isBuffering && !isAudioOnly && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/35">
-                <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
+                <Loader2 className="h-12 w-12 animate-spin text-[#16A34A]" />
                 <span className="text-xs sm:text-sm font-medium text-neutral-200">
                   Loading Lecture...
                 </span>
@@ -945,8 +1007,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             {/* Audio-Only Overlay */}
             {isAudioOnly && (
               <div className="flex flex-col items-center justify-center p-6 text-center z-10">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E50914]/20 border border-[#E50914] shadow-2xl">
-                  <Headphones className="h-12 w-12 text-[#E50914] animate-pulse" />
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#16A34A]/20 border border-[#16A34A] shadow-2xl">
+                  <Headphones className="h-12 w-12 text-[#16A34A] animate-pulse" />
                 </div>
                 <h3 className="mt-5 font-['Sora'] text-lg sm:text-xl font-bold text-white max-w-md">
                   {lecture.title}
@@ -959,7 +1021,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     e.stopPropagation();
                     setIsAudioOnly(false);
                   }}
-                  className="mt-5 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition"
+                  className="mt-5 rounded-lg bg-[#16A34A] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#22C55E] transition"
                 >
                   Turn Video Back On
                 </button>
@@ -979,11 +1041,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               <div className="flex items-center justify-between mb-1.5 px-0.5">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs sm:text-sm font-semibold tabular-nums text-white">
-                    {formatTime(currentTime)}
+                    {formatTime(effectiveTime)}
                   </span>
                   <button
                     onClick={cycleSpeed}
-                    className="rounded-md bg-[#E50914] hover:bg-[#f40612] px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-sm transition active:scale-95"
+                    className="rounded-md bg-[#16A34A] hover:bg-[#22C55E] px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-sm transition active:scale-95"
                     title="Tap to change playback speed"
                   >
                     {playbackSpeed}x
@@ -994,46 +1056,44 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 </span>
               </div>
 
-              {/* Red Scrub Bar */}
+              {/* Draggable Red Scrub Bar (grab & drag to jump to any time) */}
               <div
+                ref={scrubBarRef}
+                onPointerDown={handleScrubPointerDown}
                 onMouseMove={(e) => {
-                  if (!duration) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  if (!duration || isScrubbing) return;
+                  const ratio = getScrubRatio(e.clientX, e.clientY);
                   setHoverTime({ ratio, time: ratio * duration });
                 }}
-                onMouseLeave={() => setHoverTime(null)}
-                onClick={(e) => {
-                  const vid = videoRef.current;
-                  if (!vid || !duration) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                  vid.currentTime = ratio * duration;
-                  setCurrentTime(ratio * duration);
-                  revealControls();
+                onMouseLeave={() => {
+                  if (!isScrubbing) setHoverTime(null);
                 }}
-                className="group relative w-full h-1.5 hover:h-2.5 cursor-pointer rounded-full bg-white/25 transition-all mb-3"
+                className="group relative w-full py-2 -my-1 mb-2 cursor-pointer touch-none select-none"
               >
-                {hoverTime && (
+                <div className={`relative w-full rounded-full bg-white/25 transition-all ${isScrubbing ? 'h-2.5' : 'h-1.5 group-hover:h-2.5'}`}>
+                  {(hoverTime || isScrubbing) && (
+                    <div
+                      className="pointer-events-none absolute -top-9 -translate-x-1/2 rounded-md bg-[#16A34A] px-2.5 py-0.5 font-mono text-[11px] font-bold text-white shadow-lg"
+                      style={{ left: `${(hoverTime ? hoverTime.ratio : progressPercent / 100) * 100}%` }}
+                    >
+                      {formatTime(hoverTime ? hoverTime.time : effectiveTime)}
+                    </div>
+                  )}
                   <div
-                    className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded bg-neutral-900/95 border border-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-lg"
-                    style={{ left: `${hoverTime.ratio * 100}%` }}
-                  >
-                    {formatTime(hoverTime.time)}
-                  </div>
-                )}
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-white/35 pointer-events-none"
-                  style={{ width: `${bufferedPercent}%` }}
-                />
-                <div
-                  className="relative h-full rounded-full bg-[#E50914]"
-                  style={{ width: `${progressPercent}%` }}
-                />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 -ml-1.5 rounded-full bg-[#E50914] ring-2 ring-white shadow-md transition-transform group-hover:scale-125"
-                  style={{ left: `${progressPercent}%` }}
-                />
+                    className="absolute inset-y-0 left-0 rounded-full bg-white/35 pointer-events-none"
+                    style={{ width: `${bufferedPercent}%` }}
+                  />
+                  <div
+                    className="relative h-full rounded-full bg-[#16A34A]"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                  <div
+                    className={`absolute top-1/2 -translate-y-1/2 -ml-2 rounded-full bg-[#16A34A] ring-2 ring-white shadow-md transition-transform ${
+                      isScrubbing ? 'h-4.5 w-4.5 scale-125' : 'h-3.5 w-3.5 group-hover:scale-125'
+                    }`}
+                    style={{ left: `${progressPercent}%` }}
+                  />
+                </div>
               </div>
 
               {/* Bottom Controls Row: Left [Play, -10s, +10s, Vol] | Right [Ask AI, Notes, PiP, Audio, Download, Settings, Fullscreen] */}
@@ -1042,7 +1102,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                 <div className="flex items-center gap-1.5 sm:gap-3">
                   <button
                     onClick={togglePlayPause}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E50914] text-white hover:bg-[#f40612] active:scale-95 transition shadow-[0_0_14px_rgba(229,9,20,0.55)]"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[#16A34A] text-white hover:bg-[#22C55E] active:scale-95 transition shadow-[0_0_14px_rgba(34,197,94,0.55)]"
                     title={isPlaying ? 'Pause' : 'Play'}
                   >
                     {isPlaying ? (
@@ -1054,7 +1114,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
                   <button
                     onClick={() => seekBy(-10)}
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] active:scale-95 transition"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#16A34A] active:scale-95 transition"
                     title="Rewind 10s"
                   >
                     <RotateCcw className="h-5 w-5" />
@@ -1063,7 +1123,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
                   <button
                     onClick={() => seekBy(10)}
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] active:scale-95 transition"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#16A34A] active:scale-95 transition"
                     title="Forward 10s"
                   >
                     <RotateCw className="h-5 w-5" />
@@ -1074,8 +1134,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     onClick={() => setIsMuted(!isMuted)}
                     className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
                       isMuted
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-white hover:bg-[#E50914]'
+                        ? 'bg-[#16A34A] text-white'
+                        : 'text-white hover:bg-[#16A34A]'
                     }`}
                     title={isMuted ? 'Unmute' : 'Mute'}
                   >
@@ -1083,9 +1143,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   </button>
                 </div>
 
-                {/* Right Utility Icons + Red Ask AI Pill */}
-                <div className="flex items-center gap-1 sm:gap-2">
-                  {/* Ask AI Pill (RED theme, ONLY inside Video Player!) */}
+                {/* Right Utility Icons + Full-Circle AI Button */}
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  {/* AI Avatar Button (Full circle fill, zero gap, icon only) */}
                   <button
                     onClick={() => {
                       setShowAiDrawer((prev) => !prev);
@@ -1093,15 +1153,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                       setShowSettingsMenu(false);
                       revealControls();
                     }}
-                    className={`flex items-center gap-1.5 rounded-full border px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-bold transition whitespace-nowrap active:scale-95 ${
+                    className={`relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center overflow-hidden rounded-full transition active:scale-95 ${
                       showAiDrawer
-                        ? 'border-[#E50914] bg-[#E50914] text-white shadow-[0_0_18px_rgba(229,9,20,0.65)]'
-                        : 'border-[#E50914] bg-[#E50914]/15 text-white hover:bg-[#E50914]'
+                        ? 'ring-2 ring-[#22C55E] shadow-[0_0_18px_rgba(34,197,94,0.8)]'
+                        : 'ring-2 ring-[#22C55E]/85 hover:ring-[#22C55E]'
                     }`}
-                    title="Ask Study AI about this lecture"
+                    aria-label="Study Cloud AI Doubt Solver"
+                    title="Study Cloud AI Doubt Solver"
                   >
-                    <Sparkles className="h-4 w-4 text-[#ff6b73]" />
-                    <span>Ask AI</span>
+                    <img
+                      src="/assets/aistudio/Screenshot_2026_1126_234908_5c427dc1.png"
+                      alt="Study Cloud AI"
+                      className="h-full w-full rounded-full object-cover scale-[2.02] -translate-x-[1.5%]"
+                    />
                   </button>
 
                   {/* Notes / Attachments */}
@@ -1114,14 +1178,14 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     }}
                     className={`relative flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
                       showNotesDrawer
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-white hover:bg-[#E50914]'
+                        ? 'bg-[#16A34A] text-white'
+                        : 'text-white hover:bg-[#16A34A]'
                     }`}
                     title={`Lecture Notes (${attachments.length})`}
                   >
                     <List className="h-5 w-5" />
                     {attachments.length > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#E50914] px-1 font-mono text-[9px] font-bold text-white ring-1 ring-black">
+                      <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#16A34A] px-1 font-mono text-[9px] font-bold text-white ring-1 ring-black">
                         {attachments.length}
                       </span>
                     )}
@@ -1130,7 +1194,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   {/* Picture in Picture */}
                   <button
                     onClick={togglePiP}
-                    className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] transition active:scale-95"
+                    className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#16A34A] transition active:scale-95"
                     title="Picture in Picture"
                   >
                     <PictureInPicture2 className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1141,8 +1205,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     onClick={() => setIsAudioOnly(!isAudioOnly)}
                     className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full transition active:scale-95 ${
                       isAudioOnly
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-white hover:bg-[#E50914]'
+                        ? 'bg-[#16A34A] text-white'
+                        : 'text-white hover:bg-[#16A34A]'
                     }`}
                     title="Audio-Only Mode"
                   >
@@ -1170,7 +1234,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                           resolvedStream: streamData,
                         });
                       }}
-                      className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] transition active:scale-95"
+                      className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#16A34A] transition active:scale-95"
                       title="Download Lecture (MP4 / Audio)"
                     >
                       <Download className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1187,8 +1251,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                       }}
                       className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
                         showSettingsMenu
-                          ? 'bg-[#E50914] text-white'
-                          : 'text-white hover:bg-[#E50914]'
+                          ? 'bg-[#16A34A] text-white'
+                          : 'text-white hover:bg-[#16A34A]'
                       }`}
                       title="Quality & Speed Settings"
                     >
@@ -1207,8 +1271,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                                 onClick={() => handleQualityChange(-1)}
                                 className={`rounded-md py-1.5 font-semibold transition ${
                                   currentLevel === -1
-                                    ? 'bg-[#E50914] text-white'
-                                    : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                    ? 'bg-[#16A34A] text-white'
+                                    : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
                                 }`}
                               >
                                 Auto
@@ -1219,8 +1283,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                                   onClick={() => handleQualityChange(lvl.index)}
                                   className={`rounded-md py-1.5 font-semibold transition ${
                                     currentLevel === lvl.index
-                                      ? 'bg-[#E50914] text-white'
-                                      : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                      ? 'bg-[#16A34A] text-white'
+                                      : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
                                   }`}
                                 >
                                   {lvl.label}
@@ -1245,8 +1309,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                                 }}
                                 className={`rounded-md py-1.5 font-mono font-semibold transition ${
                                   playbackSpeed === spd
-                                    ? 'bg-[#E50914] text-white'
-                                    : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                    ? 'bg-[#16A34A] text-white'
+                                    : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
                                 }`}
                               >
                                 {spd}x
@@ -1263,8 +1327,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     onClick={toggleFullscreen}
                     className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
                       isImmersiveFullscreen
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-white hover:bg-[#E50914]'
+                        ? 'bg-[#16A34A] text-white'
+                        : 'text-white hover:bg-[#16A34A]'
                     }`}
                     title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Landscape Fullscreen'}
                   >
@@ -1288,7 +1352,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           >
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[#E50914]" />
+                <FileText className="h-5 w-5 text-[#16A34A]" />
                 <h4 className="font-['Sora'] text-sm sm:text-base font-bold text-white">
                   Lecture Notes &amp; Attachments
                 </h4>
@@ -1327,7 +1391,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   return (
                     <div
                       key={i}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3.5 text-xs sm:text-sm hover:border-[#E50914]/50 transition"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3.5 text-xs sm:text-sm hover:border-[#16A34A]/50 transition"
                     >
                       <span className="font-semibold text-white truncate pr-2 flex-1">
                         {fileName}
@@ -1355,7 +1419,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                               setDownloadingAttIdx(null);
                             }
                           }}
-                          className="flex items-center gap-1 rounded-lg bg-[#E50914] px-3 py-2 text-xs font-bold text-white hover:bg-[#f40612] disabled:opacity-60 transition"
+                          className="flex items-center gap-1 rounded-lg bg-[#16A34A] px-3 py-2 text-xs font-bold text-white hover:bg-[#22C55E] disabled:opacity-60 transition"
                         >
                           {isDownloading ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1375,7 +1439,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
         )}
 
-        {/* In-Player Study AI Doubt Drawer (AI ONLY during lecture) */}
+        {/* In-Player Study Cloud AI Doubt Drawer (AI ONLY during lecture) */}
         {showAiDrawer && (
           <div
             onClick={(e) => e.stopPropagation()}

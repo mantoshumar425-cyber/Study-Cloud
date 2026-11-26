@@ -13,6 +13,7 @@ import {
   applyCachedStudyParchamSig,
   refreshStudyParchamSigForUrl,
 } from './serverStudyParcham.ts';
+import { readVaultJson, writeVaultJson } from './serverVault.ts';
 
 export interface FeatureRouteDeps {
   getGeminiClient: () => GoogleGenAI;
@@ -1826,5 +1827,117 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
       downloadJobs.delete(req.params.jobId);
     }
     return res.json({ success: true });
+  });
+
+  // 11. Real Persistent Total XP Leaderboard
+  const LEADERBOARD_VAULT_KEY = 'studycloud_xp_leaderboard_v1';
+
+  interface StoredLeaderboardEntry {
+    playerId: string;
+    name: string;
+    exam: string;
+    xp: number;
+    level: number;
+    rank: string;
+    completedCount: number;
+    currentStreak: number;
+    updatedAt: number;
+  }
+
+  function readLeaderboardList(): StoredLeaderboardEntry[] {
+    const cached = readVaultJson<StoredLeaderboardEntry[]>(LEADERBOARD_VAULT_KEY);
+    if (!cached || !Array.isArray(cached.data)) return [];
+    return cached.data.filter((item) => item && typeof item.playerId === 'string' && item.playerId.trim().length > 0);
+  }
+
+  function sortLeaderboard(list: StoredLeaderboardEntry[]): StoredLeaderboardEntry[] {
+    return [...list].sort((a, b) => {
+      if (b.xp !== a.xp) return b.xp - a.xp;
+      if (b.completedCount !== a.completedCount) return b.completedCount - a.completedCount;
+      if (b.currentStreak !== a.currentStreak) return b.currentStreak - a.currentStreak;
+      return b.updatedAt - a.updatedAt;
+    });
+  }
+
+  app.get('/api/leaderboard', (req, res) => {
+    const examFilter = String(req.query.exam || 'all').trim().toLowerCase();
+    const sortedAll = sortLeaderboard(readLeaderboardList());
+    const filtered =
+      examFilter && examFilter !== 'all'
+        ? sortedAll.filter((e) => e.exam.toLowerCase() === examFilter)
+        : sortedAll;
+    return res.json({
+      success: true,
+      entries: filtered.slice(0, 100),
+      totalStudents: sortedAll.length,
+    });
+  });
+
+  app.post('/api/leaderboard/sync', (req, res) => {
+    try {
+      const body = req.body || {};
+      const playerId = String(body.playerId || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+        .slice(0, 64);
+      if (!playerId) {
+        return res.status(400).json({ success: false, message: 'playerId is required' });
+      }
+
+      const rawName = String(body.name || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 32);
+      const name = rawName || `Scholar ${playerId.slice(-4).toUpperCase()}`;
+
+      const rawExam = String(body.exam || 'All Exams')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 24);
+      const exam = rawExam || 'All Exams';
+
+      const xp = Math.max(0, Math.min(500000, Math.floor(Number(body.xp) || 0)));
+      const level = Math.max(1, Math.min(999, Math.floor(Number(body.level) || Math.floor(xp / 200) + 1)));
+      const completedCount = Math.max(0, Math.min(20000, Math.floor(Number(body.completedCount) || 0)));
+      const currentStreak = Math.max(0, Math.min(3650, Math.floor(Number(body.currentStreak) || 0)));
+      const rank =
+        String(body.rank || 'Beginner Explorer')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 32) || 'Beginner Explorer';
+
+      const current = readLeaderboardList();
+      const idx = current.findIndex((item) => item.playerId === playerId);
+      const updatedEntry: StoredLeaderboardEntry = {
+        playerId,
+        name,
+        exam,
+        xp,
+        level,
+        rank,
+        completedCount,
+        currentStreak,
+        updatedAt: Date.now(),
+      };
+
+      if (idx >= 0) {
+        current[idx] = updatedEntry;
+      } else {
+        current.push(updatedEntry);
+      }
+
+      const sorted = sortLeaderboard(current).slice(0, 500);
+      writeVaultJson(LEADERBOARD_VAULT_KEY, sorted);
+
+      const myPosition = sorted.findIndex((item) => item.playerId === playerId) + 1;
+      return res.json({
+        success: true,
+        myPosition,
+        totalStudents: sorted.length,
+        entries: sorted.slice(0, 100),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || 'Failed to sync leaderboard' });
+    }
   });
 }

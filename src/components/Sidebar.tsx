@@ -67,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pi', label: 'Pi', subtitle: 'Pi Pro OTT concept vault', icon: Sigma },
     { id: 'community', label: 'Community', subtitle: 'Channels & study lounge', icon: Users },
     { id: 'test', label: 'Test', subtitle: 'CBT mock & practice sets', icon: ClipboardCheck },
+    { id: 'leaderboard', label: 'Leaderboard', subtitle: 'Total XP live rankings', icon: Trophy },
   ];
 
   const utilityItems: Array<{
@@ -265,15 +266,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Bottom Adventure Summary */}
+      {/* Bottom Adventure Summary (Click to open Total XP Leaderboard) */}
       {!compact ? (
         <div className="shrink-0 border-t border-[var(--card-border)] p-2.5">
-          <div className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-primary)]/70 p-2.5 space-y-1.5">
+          <button
+            type="button"
+            onClick={() => handleNav('leaderboard')}
+            className="w-full text-left rounded-xl border border-[var(--card-border)] bg-[var(--bg-primary)]/70 hover:border-emerald-500/50 p-2.5 space-y-1.5 transition"
+            title="Open Total XP Leaderboard"
+          >
             <div className="flex items-center justify-between text-[11px]">
               <span className="flex items-center gap-1.5 font-bold text-[var(--text-primary)]">
                 <Compass className="h-3.5 w-3.5 text-[var(--primary-color)]" />
                 <span>Lv.{adventureStats.level} {adventureStats.rank}</span>
               </span>
+              <ChevronRight className="h-3.5 w-3.5 text-emerald-400" />
             </div>
             <div className="flex items-center justify-between font-mono tabular-nums text-[11px] text-[var(--text-secondary)]">
               <span className="flex items-center gap-1 text-emerald-400 font-bold">
@@ -285,13 +292,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {adventureStats.currentStreak}d Streak
               </span>
             </div>
-          </div>
+          </button>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-[var(--card-border)] py-2.5 flex flex-col items-center gap-0.5 font-mono tabular-nums text-[10px] font-bold text-amber-400">
+        <button
+          type="button"
+          onClick={() => handleNav('leaderboard')}
+          className="w-full shrink-0 border-t border-[var(--card-border)] py-2.5 flex flex-col items-center gap-0.5 font-mono tabular-nums text-[10px] font-bold text-amber-400 hover:bg-[var(--bg-tertiary)] transition"
+          title="Open Total XP Leaderboard"
+        >
           <Flame className="h-3.5 w-3.5" />
           <span>{adventureStats.currentStreak}d</span>
-        </div>
+        </button>
       )}
     </div>
   );

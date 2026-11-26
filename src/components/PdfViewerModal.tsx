@@ -270,18 +270,18 @@ export const PdfViewerModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex h-[100dvh] w-full flex-col bg-[#08090f]/98 text-slate-100 backdrop-blur-md">
+    <div className="fixed inset-0 z-[90] flex h-[100dvh] w-full flex-col bg-[#05110b]/98 text-slate-100 backdrop-blur-md">
       {/* Top Reader Toolbar */}
-      <div className="flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-[#10121c] px-3 sm:px-5">
+      <div className="flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b border-emerald-500/20 bg-[#0a1c13] px-3 sm:px-5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/15 text-pink-400">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#22C55E]/30 bg-[#16A34A]/20 text-[#4ade80]">
             <FileText className="h-4.5 w-4.5" />
           </div>
           <div className="min-w-0">
             <h3 className="font-['Sora'] text-xs sm:text-sm font-bold text-white truncate">
               {title}
             </h3>
-            <p className="font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
+            <p className="font-mono text-[11px] text-emerald-200/70 flex items-center gap-1.5">
               <span>
                 {loading
                   ? 'Opening HD inline PDF reader...'
@@ -289,7 +289,7 @@ export const PdfViewerModal: React.FC = () => {
                   ? `${numPages} ${numPages === 1 ? 'Page' : 'Pages'} · Inline Viewer`
                   : 'PDF Preview'}
               </span>
-              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wider text-emerald-300">
+              <span className="rounded bg-[#16A34A]/30 border border-[#22C55E]/40 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wider text-[#4ade80]">
                 HD
               </span>
             </p>
@@ -298,11 +298,11 @@ export const PdfViewerModal: React.FC = () => {
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Zoom controls */}
-          <div className="hidden sm:flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-1.5 py-1">
+          <div className="hidden sm:flex items-center gap-1 rounded-xl border border-emerald-500/25 bg-[#16A34A]/15 px-1.5 py-1">
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-emerald-100 hover:bg-[#16A34A] hover:text-white transition"
               title="Zoom Out"
             >
               <ZoomOut className="h-3.5 w-3.5" />
@@ -310,7 +310,7 @@ export const PdfViewerModal: React.FC = () => {
             <button
               type="button"
               onClick={() => setZoom(1)}
-              className="px-1.5 font-mono text-[11px] font-bold text-slate-200 hover:text-white"
+              className="px-1.5 font-mono text-[11px] font-bold text-white hover:text-[#4ade80]"
               title="Reset Zoom"
             >
               {Math.round(zoom * 100)}%
@@ -318,7 +318,7 @@ export const PdfViewerModal: React.FC = () => {
             <button
               type="button"
               onClick={() => setZoom((z) => Math.min(3, Number((z + 0.2).toFixed(2))))}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-emerald-100 hover:bg-[#16A34A] hover:text-white transition"
               title="Zoom In"
             >
               <ZoomIn className="h-3.5 w-3.5" />
@@ -331,8 +331,8 @@ export const PdfViewerModal: React.FC = () => {
             onClick={() => setNightMode((prev) => !prev)}
             className={`flex h-9 items-center gap-1.5 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition ${
               nightMode
-                ? 'border-amber-400/50 bg-amber-500/20 text-amber-300'
-                : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+                ? 'border-[#22C55E] bg-[#16A34A]/30 text-[#4ade80]'
+                : 'border-emerald-500/25 bg-emerald-950/60 text-emerald-100 hover:bg-[#16A34A]/25'
             }`}
             title="Toggle Night Reading Mode"
           >
@@ -345,7 +345,7 @@ export const PdfViewerModal: React.FC = () => {
             type="button"
             disabled={downloading}
             onClick={handleExplicitDownload}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60 transition"
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-[#16A34A] px-3 text-xs font-bold text-white shadow-[0_0_14px_rgba(34,197,94,0.35)] hover:bg-[#22C55E] disabled:opacity-60 transition"
             title="Download PDF"
           >
             {downloading ? (
@@ -362,7 +362,7 @@ export const PdfViewerModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setPdfRequest(null)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:border-red-500/50 hover:text-red-400 transition"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-950/60 text-emerald-100 hover:border-[#22C55E] hover:bg-[#16A34A] hover:text-white transition"
             aria-label="Close PDF Viewer"
             title="Close"
           >
@@ -372,15 +372,15 @@ export const PdfViewerModal: React.FC = () => {
       </div>
 
       {/* Mobile Compact Zoom Bar */}
-      <div className="flex sm:hidden items-center justify-between border-b border-white/10 bg-[#0d0f18] px-3 py-1.5 text-xs">
-        <span className="font-mono text-slate-400">
+      <div className="flex sm:hidden items-center justify-between border-b border-emerald-500/15 bg-[#07160e] px-3 py-1.5 text-xs">
+        <span className="font-mono text-emerald-200/80">
           {numPages > 0 ? `${numPages} pages` : 'Loading...'}
         </span>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
-            className="rounded-lg bg-white/10 p-1.5 text-slate-200"
+            className="rounded-lg bg-[#16A34A]/25 border border-emerald-500/25 p-1.5 text-emerald-100 hover:bg-[#16A34A]"
             aria-label="Zoom Out"
           >
             <ZoomOut className="h-3.5 w-3.5" />
@@ -391,7 +391,7 @@ export const PdfViewerModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setZoom((z) => Math.min(3, Number((z + 0.2).toFixed(2))))}
-            className="rounded-lg bg-white/10 p-1.5 text-slate-200"
+            className="rounded-lg bg-[#16A34A]/25 border border-emerald-500/25 p-1.5 text-emerald-100 hover:bg-[#16A34A]"
             aria-label="Zoom In"
           >
             <ZoomIn className="h-3.5 w-3.5" />
@@ -405,19 +405,19 @@ export const PdfViewerModal: React.FC = () => {
         className="flex-1 overflow-y-auto px-2 sm:px-6 py-5 space-y-6"
       >
         {loading ? (
-          <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-slate-300">
-            <Loader2 className="h-9 w-9 animate-spin text-[var(--primary-color)]" />
+          <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-emerald-100">
+            <Loader2 className="h-9 w-9 animate-spin text-[#22C55E]" />
             <span>Loading PDF pages inside Study Cloud reader...</span>
           </div>
         ) : error ? (
-          <div className="mx-auto max-w-md rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center space-y-3 mt-10">
-            <AlertCircle className="h-8 w-8 text-red-400 mx-auto" />
-            <p className="text-sm text-red-200">{error}</p>
+          <div className="mx-auto max-w-md rounded-2xl border border-emerald-500/30 bg-[#0a1c13] p-6 text-center space-y-3 mt-10">
+            <AlertCircle className="h-8 w-8 text-[#4ade80] mx-auto" />
+            <p className="text-sm text-emerald-100">{error}</p>
             <div className="flex items-center justify-center gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => void loadPdfDocument(pdfRequest.url, title)}
-                className="flex items-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white"
+                className="flex items-center gap-1.5 rounded-xl bg-[#16A34A] hover:bg-[#22C55E] px-4 py-2 text-xs font-bold text-white transition"
               >
                 <RotateCw className="h-3.5 w-3.5" />
                 <span>Retry</span>
@@ -425,7 +425,7 @@ export const PdfViewerModal: React.FC = () => {
               <button
                 type="button"
                 onClick={handleExplicitDownload}
-                className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white"
+                className="rounded-xl border border-emerald-500/25 bg-emerald-950/60 px-4 py-2 text-xs font-bold text-emerald-100 hover:bg-[#16A34A]/30 transition"
               >
                 Download Instead
               </button>

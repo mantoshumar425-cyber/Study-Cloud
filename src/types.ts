@@ -359,11 +359,24 @@ export type NavTab =
   | 'pi'
   | 'community'
   | 'test'
+  | 'leaderboard'
   | 'search'
   | 'downloads'
   | 'favorites'
   | 'history'
   | 'settings';
+
+export interface LeaderboardEntry {
+  playerId: string;
+  name: string;
+  exam: string;
+  xp: number;
+  level: number;
+  rank: string;
+  completedCount: number;
+  currentStreak: number;
+  updatedAt: number;
+}
 
 export type AiStudyLanguage = 'hinglish' | 'hindi' | 'english';
 export type AiStudyMode = 'doubt' | 'formula' | 'quiz' | 'summary';

@@ -141,7 +141,7 @@ export async function askStudyAi(params: {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.success || !data?.reply) {
-    throw new Error(data?.message || `Study AI returned error (${res.status}).`);
+    throw new Error(data?.message || `Study Cloud AI returned error (${res.status}).`);
   }
   return String(data.reply);
 }

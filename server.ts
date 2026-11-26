@@ -2050,12 +2050,12 @@ export function createApiApp(): express.Express {
     }
   });
 
-  // 8. Study AI Doubt Solver & Tutor (Server-Side Gemini API)
+  // 8. Study Cloud AI Doubt Solver & Tutor (Server-Side Gemini API)
   const getGeminiClient = () => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error(
-        'Study AI is not ready yet because GEMINI_API_KEY is not set in Settings > Secrets.'
+        'Study Cloud AI is not ready yet because GEMINI_API_KEY is not set in Settings > Secrets.'
       );
     }
     return new GoogleGenAI({
@@ -2120,7 +2120,7 @@ export function createApiApp(): express.Express {
       if (context?.lectureTitle) contextLines.push(`Current Lecture: ${context.lectureTitle}`);
 
       const systemInstruction = [
-        'You are Study AI, an expert Indian academic mentor & doubt solver built inside VidCloud (for Class 9-12, IIT-JEE, NEET, and UPSC students).',
+        'You are Study Cloud AI, an expert Indian academic mentor & doubt solver built inside VidCloud (for Class 9-12, IIT-JEE, NEET, and UPSC students).',
         langGuide,
         modeGuide,
         contextLines.length > 0 ? `Active Study Context:\n${contextLines.join('\n')}` : '',
@@ -2219,7 +2219,7 @@ export function createApiApp(): express.Express {
         if (status === 503 || cleanMsg.includes('UNAVAILABLE') || cleanMsg.includes('high demand')) {
           return res.status(503).json({
             success: false,
-            message: 'Study AI abhi busy hai (high demand). 5 second baad dubara Ask par tap karein.',
+            message: 'Study Cloud AI abhi busy hai (high demand). 5 second baad dubara Ask par tap karein.',
           });
         }
         return res.status(status >= 400 && status < 600 ? status : 500).json({
@@ -2231,7 +2231,7 @@ export function createApiApp(): express.Express {
       if (!responseText) {
         return res.status(502).json({
           success: false,
-          message: 'Study AI returned an empty answer. Please rephrase your question and try again.',
+          message: 'Study Cloud AI returned an empty answer. Please rephrase your question and try again.',
         });
       }
 
@@ -2242,7 +2242,7 @@ export function createApiApp(): express.Express {
     } catch (err: any) {
       return res.status(500).json({
         success: false,
-        message: err?.message || 'Could not reach Study AI right now.',
+        message: err?.message || 'Could not reach Study Cloud AI right now.',
       });
     }
   });

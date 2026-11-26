@@ -36,7 +36,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ onClose }) => {
 
         <p className="mt-3 text-xs leading-relaxed text-[var(--text-secondary)]">
           Distraction-free lecture player with Khazana archive, CBT practice tests, Pi study
-          sandbox, Community lounge, Study AI, and daily learning streak tracking.
+          sandbox, Community lounge, Study Cloud AI, and daily learning streak tracking.
         </p>
 
         <div className="mt-5 space-y-2 text-left text-xs">

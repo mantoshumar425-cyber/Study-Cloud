@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Sparkles,
   Send,
   ImagePlus,
   X,
@@ -274,7 +273,7 @@ export const StudyAiPanel: React.FC<StudyAiPanelProps> = ({
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Study AI se response nahi aa paya. Dobara try karein.');
+      setErrorMsg(err?.message || 'Study Cloud AI se response nahi aa paya. Dobara try karein.');
     } finally {
       setIsSending(false);
     }
@@ -308,12 +307,16 @@ export const StudyAiPanel: React.FC<StudyAiPanelProps> = ({
       {/* Header Bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white shadow-md">
-            <Sparkles className="h-4 w-4" />
+          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full ring-2 ring-[#22C55E]/80 shadow-md">
+            <img
+              src="/assets/aistudio/Screenshot_2026_1126_234908_5c427dc1.png"
+              alt="Study Cloud AI"
+              className="h-full w-full rounded-full object-cover scale-[2.02] -translate-x-[1.5%]"
+            />
           </div>
           <div className="min-w-0">
             <h2 className="font-['Sora'] text-sm sm:text-base font-extrabold text-[var(--text-primary)] truncate">
-              Study AI Doubt Solver
+              Study Cloud AI Doubt Solver
             </h2>
             <p className="text-[11px] text-[var(--text-secondary)] truncate">
               {hasContext
@@ -360,7 +363,7 @@ export const StudyAiPanel: React.FC<StudyAiPanelProps> = ({
               type="button"
               onClick={onClose}
               className="flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:border-[var(--primary-color)] transition"
-              title="Close Study AI"
+              title="Close Study Cloud AI"
             >
               <X className="h-4 w-4" />
             </button>
@@ -406,8 +409,12 @@ export const StudyAiPanel: React.FC<StudyAiPanelProps> = ({
       <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center py-6 px-2">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/15 text-[var(--primary-color)] mb-3">
-              <Sparkles className="h-7 w-7" />
+            <div className="mb-3 h-16 w-16 overflow-hidden rounded-full ring-2 ring-[#22C55E]/70 shadow-lg">
+              <img
+                src="/assets/aistudio/Screenshot_2026_1126_234908_5c427dc1.png"
+                alt="Study Cloud AI"
+                className="h-full w-full rounded-full object-cover scale-[2.02] -translate-x-[1.5%]"
+              />
             </div>
             <h3 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
               Apna Doubt Poocho — Step-by-Step Solution
@@ -495,7 +502,7 @@ export const StudyAiPanel: React.FC<StudyAiPanelProps> = ({
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-2.5 text-xs text-[var(--text-secondary)]">
               <Loader2 className="h-4 w-4 animate-spin text-[var(--primary-color)]" />
-              <span>Study AI soch raha hai...</span>
+              <span>Study Cloud AI soch raha hai...</span>
             </div>
           </div>
         )}

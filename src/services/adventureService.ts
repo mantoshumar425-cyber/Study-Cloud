@@ -229,3 +229,105 @@ export function getAdventureMetrics(state: AdventureState, batchId?: string) {
     completedTopicCounts,
   };
 }
+
+const PLAYER_ID_KEY = 'studycloud_player_id_v1';
+const PLAYER_NAME_KEY = 'studycloud_player_name_v1';
+const PLAYER_EXAM_KEY = 'studycloud_player_exam_v1';
+
+export function getLeaderboardProfile(): { playerId: string; name: string; exam: string } {
+  if (typeof window === 'undefined') {
+    return { playerId: 'guest', name: 'Study Scholar', exam: 'IIT-JEE' };
+  }
+  let playerId = '';
+  try {
+    playerId = localStorage.getItem(PLAYER_ID_KEY) || '';
+    if (!playerId) {
+      playerId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+          : `sc_${Math.random().toString(36).slice(2, 12)}`;
+      localStorage.setItem(PLAYER_ID_KEY, playerId);
+    }
+  } catch {
+    playerId = 'sc_local_user';
+  }
+
+  let name = '';
+  let exam = 'IIT-JEE';
+  try {
+    name = localStorage.getItem(PLAYER_NAME_KEY) || '';
+    exam = localStorage.getItem(PLAYER_EXAM_KEY) || 'IIT-JEE';
+  } catch {
+    // ignore
+  }
+  if (!name) {
+    name = `Scholar ${playerId.slice(-4).toUpperCase()}`;
+  }
+  return { playerId, name, exam };
+}
+
+export function saveLeaderboardProfile(params: { name: string; exam: string }): {
+  playerId: string;
+  name: string;
+  exam: string;
+} {
+  const current = getLeaderboardProfile();
+  const cleanName = params.name.replace(/\s+/g, ' ').trim().slice(0, 32) || current.name;
+  const cleanExam = params.exam.replace(/\s+/g, ' ').trim().slice(0, 24) || current.exam;
+  try {
+    localStorage.setItem(PLAYER_NAME_KEY, cleanName);
+    localStorage.setItem(PLAYER_EXAM_KEY, cleanExam);
+  } catch {
+    // ignore
+  }
+  return { playerId: current.playerId, name: cleanName, exam: cleanExam };
+}
+
+export async function syncLeaderboardScore(state?: AdventureState): Promise<{
+  entries: import('../types').LeaderboardEntry[];
+  myPosition: number;
+  totalStudents: number;
+}> {
+  const s = state || getAdventureState();
+  const metrics = getAdventureMetrics(s);
+  const profile = getLeaderboardProfile();
+
+  const res = await fetch('/api/leaderboard/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      playerId: profile.playerId,
+      name: profile.name,
+      exam: profile.exam,
+      xp: metrics.xp,
+      level: metrics.level,
+      rank: metrics.rank,
+      completedCount: metrics.completedCount,
+      currentStreak: metrics.currentStreak,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || 'Could not sync XP leaderboard');
+  }
+  return {
+    entries: Array.isArray(data.entries) ? data.entries : [],
+    myPosition: Number(data.myPosition || 0),
+    totalStudents: Number(data.totalStudents || 0),
+  };
+}
+
+export async function fetchLeaderboard(examFilter = 'all'): Promise<{
+  entries: import('../types').LeaderboardEntry[];
+  totalStudents: number;
+}> {
+  const res = await fetch(`/api/leaderboard?exam=${encodeURIComponent(examFilter)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || 'Failed to load leaderboard');
+  }
+  return {
+    entries: Array.isArray(data.entries) ? data.entries : [],
+    totalStudents: Number(data.totalStudents || 0),
+  };
+}
