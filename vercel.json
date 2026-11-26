@@ -9,7 +9,7 @@
       "destination": "/api"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/|assets/|robots\\.txt$|sitemap\\.xml$|manifest\\.webmanifest$|sw\\.js$|workbox-|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?|css|js|json|xml|txt)$).*)",
       "destination": "/index.html"
     }
   ]

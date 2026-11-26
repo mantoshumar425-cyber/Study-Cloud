@@ -25,14 +25,18 @@ export const ShareWebsiteModal: React.FC<ShareWebsiteModalProps> = ({ onClose })
   const [promoVariant, setPromoVariant] = useState<'hinglish' | 'english'>('hinglish');
 
   const websiteUrl = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    return window.location.origin + '/';
+    if (typeof window === 'undefined') return 'https://studycloud-study.vercel.app/';
+    const host = window.location.hostname;
+    if (host.includes('studycloud-study.vercel.app')) {
+      return window.location.origin + '/';
+    }
+    return 'https://studycloud-study.vercel.app/';
   }, []);
 
   const promoMessages = useMemo(() => {
     return {
-      hinglish: `🔥 *Study Cloud* — Free Padhai ka All-in-One Hub!\n\n✅ 18,000+ PW Batches & Live Classes\n✅ Full Khazana Faculty Vault & Pi OTT\n✅ Offline MP4 Video + Audio Download (Seedha Gallery & App mein)\n✅ Live CBT Tests, DPP Quiz & Study AI Doubt Solver\n\nAbhi kholein aur dosto ko bhi bhejein 👇\n${websiteUrl}`,
-      english: `🚀 Study Cloud — Free All-in-One Learning Platform!\n\n• 18,000+ Study Batches & Khazana Lectures\n• Pi OTT Concept Vault & Live CBT Test Series\n• Offline MP4 Lecture Downloads & Study AI\n\nJoin now & share with your study group 👇\n${websiteUrl}`,
+      hinglish: `🔥 *Study Cloud* — Free Padhai ka All-in-One Hub!\n\n✅ 18,000+ PW Batches & Live Classes\n✅ Full Khazana Faculty Vault & Pi OTT\n✅ Offline MP4 Video + Audio Download (Seedha Gallery & App mein)\n✅ Live CBT Tests, DPP Quiz & In-Lecture AI\n\nAbhi kholein aur dosto ko bhi bhejein 👇\n${websiteUrl}`,
+      english: `🚀 Study Cloud — Free All-in-One Learning Platform!\n\n• 18,000+ Study Batches & Khazana Lectures\n• Pi OTT Concept Vault & Live CBT Test Series\n• Offline MP4 Lecture Downloads & In-Lecture AI\n\nJoin now & share with your study group 👇\n${websiteUrl}`,
     };
   }, [websiteUrl]);
 

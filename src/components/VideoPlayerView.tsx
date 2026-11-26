@@ -8,7 +8,6 @@ import {
   Moon,
   RotateCcw,
   RotateCw,
-  Gauge,
   FileText,
   Volume2,
   VolumeX,
@@ -16,7 +15,6 @@ import {
   Pause,
   Loader2,
   AlertTriangle,
-  SlidersHorizontal,
   PictureInPicture2,
   Download,
   X,
@@ -24,6 +22,11 @@ import {
   Sparkles,
   Smartphone,
   Expand,
+  Lock,
+  Unlock,
+  MoreVertical,
+  Settings,
+  List,
 } from 'lucide-react';
 import { ResolvedStream } from '../types';
 import {
@@ -100,6 +103,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [seekToast, setSeekToast] = useState<string | null>(null);
   const [hoverTime, setHoverTime] = useState<{ ratio: number; time: number } | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   // Fullscreen, Landscape & Scaling state
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -112,12 +116,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
   // Quality levels
   const [qualityLevels, setQualityLevels] = useState<Array<{ index: number; label: string }>>([]);
-  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 = Auto
+  const [currentLevel, setCurrentLevel] = useState<number>(-1);
 
   // Popups & Drawers
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [showSleepMenu, setShowSleepMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showNotesDrawer, setShowNotesDrawer] = useState(false);
   const [showAiDrawer, setShowAiDrawer] = useState(false);
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
@@ -184,7 +187,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const isCssRotatedLandscape = (isFullscreen || forceCssLandscape) && isPortraitViewport;
   const isImmersiveFullscreen = isFullscreen || forceCssLandscape;
 
-  // Netflix-style auto-hide overlay controls smoothly while playing (in both normal & fullscreen)
   const scheduleAutoHide = useCallback(() => {
     if (hideTimerRef.current) {
       window.clearTimeout(hideTimerRef.current);
@@ -194,9 +196,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       !isPlaying ||
       resolving ||
       Boolean(resolveError) ||
-      showSpeedMenu ||
-      showQualityMenu ||
-      showSleepMenu ||
+      showSettingsMenu ||
+      showMoreMenu ||
       showNotesDrawer ||
       showAiDrawer
     ) {
@@ -205,17 +206,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
     hideTimerRef.current = window.setTimeout(() => {
       setControlsVisible(false);
-    }, 3200);
-  }, [
-    isPlaying,
-    resolving,
-    resolveError,
-    showSpeedMenu,
-    showQualityMenu,
-    showSleepMenu,
-    showNotesDrawer,
-    showAiDrawer,
-  ]);
+    }, 3400);
+  }, [isPlaying, resolving, resolveError, showSettingsMenu, showMoreMenu, showNotesDrawer, showAiDrawer]);
 
   useEffect(() => {
     scheduleAutoHide();
@@ -229,7 +221,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     scheduleAutoHide();
   }, [scheduleAutoHide]);
 
-  // 1. Resolve real stream (or load offline saved Blob) on mount & record daily streak activity
+  // 1. Resolve real stream (or load offline saved Blob) on mount
   const loadStream = async () => {
     setResolving(true);
     setResolveError(null);
@@ -309,7 +301,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           setIsPlaying(true);
         })
         .catch(() => {
-          // Browser blocked unmuted autoplay — leave paused cleanly with prominent Netflix Play button
           setIsPlaying(false);
           setControlsVisible(true);
         });
@@ -484,12 +475,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     [revealControls]
   );
 
+  const cycleSpeed = () => {
+    const idx = speedOptions.indexOf(playbackSpeed);
+    const next = speedOptions[(idx + 1) % speedOptions.length];
+    setPlaybackSpeed(next);
+    revealControls();
+  };
+
   const handleQualityChange = (lvlIndex: number) => {
     setCurrentLevel(lvlIndex);
     if (hlsRef.current) {
       hlsRef.current.currentLevel = lvlIndex;
     }
-    setShowQualityMenu(false);
+    setShowSettingsMenu(false);
     revealControls();
   };
 
@@ -571,9 +569,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   };
 
-  // Keyboard shortcuts (Space/K play-pause, J/Left -10s, L/Right +10s, M mute, F fullscreen)
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isLocked) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.key === ' ' || e.key.toLowerCase() === 'k') {
@@ -595,7 +594,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [togglePlayPause, seekBy, toggleFullscreen]);
+  }, [isLocked, togglePlayPause, seekBy, toggleFullscreen]);
 
   const formatTime = (secs: number) => {
     if (!secs || !isFinite(secs)) return '0:00';
@@ -610,7 +609,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
   const attachments = streamData?.attachments || [];
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
-  const isHudVisible = controlsVisible || !isPlaying || showSpeedMenu || showQualityMenu || showSleepMenu;
+  const isHudVisible =
+    !isLocked && (controlsVisible || !isPlaying || showSettingsMenu || showMoreMenu);
 
   return (
     <div
@@ -631,9 +631,11 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         isCssRotatedLandscape ? 'origin-center' : 'inset-0 h-[100dvh] w-full'
       }`}
     >
-      {/* Netflix-Style Full-Bleed Cinema Viewport */}
+      {/* Full-Bleed Black Viewport */}
       <div
         onClick={() => {
+          setShowSettingsMenu(false);
+          setShowMoreMenu(false);
           if (streamData?.isYoutube || resolving || resolveError) return;
           setControlsVisible((prev) => {
             const next = !prev;
@@ -643,10 +645,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         }}
         className="relative flex flex-1 items-center justify-center bg-black overflow-hidden"
       >
-        {/* Top Netflix Gradient Scrim Bar */}
+        {/* Top Minimal Header Bar (Back + Title + 3-dots menu) */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`absolute top-0 left-0 right-0 z-20 flex h-16 sm:h-20 items-center justify-between gap-3 px-3 sm:px-6 bg-gradient-to-b from-black/95 via-black/60 to-transparent transition-all duration-300 ${
+          className={`absolute top-0 left-0 right-0 z-20 flex h-14 sm:h-16 items-center justify-between gap-3 px-3 sm:px-5 bg-gradient-to-b from-black/90 via-black/45 to-transparent transition-all duration-200 ${
             isHudVisible || resolving || resolveError || streamData?.isYoutube
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-4 pointer-events-none'
@@ -661,190 +663,160 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/45 text-white border border-white/15 hover:bg-white/20 active:scale-95 transition backdrop-blur-md"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white hover:bg-[#E50914]/25 hover:text-[#ff4d57] active:scale-95 transition"
               title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Back'}
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="hidden sm:inline-flex shrink-0 items-center rounded bg-[#E50914] px-1.5 py-0.5 font-['Sora'] text-[10px] font-black uppercase tracking-wider text-white">
-                  {lecture.offlineId ? 'Offline' : 'HD'}
-                </span>
-                <h2 className="font-['Sora'] text-sm sm:text-base font-bold tracking-tight text-white truncate">
-                  {lecture.title}
-                </h2>
-              </div>
-              <span className="text-[11px] sm:text-xs font-medium text-neutral-300/90 truncate">
-                {lecture.batchName || 'VidCloud Stream'}
-                {lecture.subjectName ? ` • ${lecture.subjectName}` : ''}
-              </span>
-            </div>
+            <h2 className="font-['Sora'] text-sm sm:text-base font-semibold tracking-tight text-white truncate">
+              {lecture.title}
+            </h2>
           </div>
 
-          {/* Top Right Netflix Tools (AI ONLY here during lecture!) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* 3-Dots Overflow Menu */}
+          <div className="relative shrink-0">
             <button
               onClick={() => {
-                setShowAiDrawer((prev) => !prev);
-                setShowNotesDrawer(false);
+                setShowMoreMenu((prev) => !prev);
+                setShowSettingsMenu(false);
                 revealControls();
               }}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs sm:text-sm font-bold transition whitespace-nowrap backdrop-blur-md border ${
-                showAiDrawer
-                  ? 'bg-[#E50914] border-[#E50914] text-white shadow-[0_0_20px_rgba(229,9,20,0.45)]'
-                  : 'bg-black/50 border-white/20 text-white hover:bg-white/20'
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+                showMoreMenu
+                  ? 'bg-[#E50914] text-white'
+                  : 'text-white hover:bg-[#E50914]/25 hover:text-[#ff4d57]'
               }`}
-              title="Ask Study AI about this lecture"
+              title="More options"
             >
-              <Sparkles className="h-4 w-4 text-amber-300" />
-              <span>Ask AI</span>
+              <MoreVertical className="h-5 w-5" />
             </button>
 
-            {!lecture.offlineId && !streamData?.isYoutube && (
-              <button
-                onClick={() => {
-                  openLectureDownloadModal({
-                    batchId: lecture.batchId,
-                    programId: lecture.programId,
-                    subjectId: lecture.subjectId,
-                    topicId: lecture.topicId,
-                    videoId: lecture.videoId,
-                    findKey: lecture.findKey,
-                    videoDetailsId: lecture.videoDetailsId,
-                    typeId: lecture.typeId,
-                    title: lecture.title,
-                    videoImg: lecture.videoImg,
-                    videoType: lecture.videoType || 'new',
-                    playType: lecture.playType || 'Lecture',
-                    rawVideoUrl: lecture.rawVideoUrl,
-                    resolvedStream: streamData,
-                  });
-                }}
-                className="flex h-10 items-center gap-1.5 rounded-full bg-black/50 border border-white/20 px-3 text-xs font-bold text-emerald-300 hover:bg-white/20 transition backdrop-blur-md"
-                title="Download Lecture (MP4 / Audio)"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden md:inline">Download</span>
-              </button>
-            )}
+            {showMoreMenu && (
+              <div className="absolute right-0 top-12 z-50 w-56 rounded-xl border border-white/15 bg-neutral-950/95 p-1.5 shadow-2xl backdrop-blur-xl text-xs">
+                {!lecture.offlineId && !streamData?.isYoutube && (
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      openLectureDownloadModal({
+                        batchId: lecture.batchId,
+                        programId: lecture.programId,
+                        subjectId: lecture.subjectId,
+                        topicId: lecture.topicId,
+                        videoId: lecture.videoId,
+                        findKey: lecture.findKey,
+                        videoDetailsId: lecture.videoDetailsId,
+                        typeId: lecture.typeId,
+                        title: lecture.title,
+                        videoImg: lecture.videoImg,
+                        videoType: lecture.videoType || 'new',
+                        playType: lecture.playType || 'Lecture',
+                        rawVideoUrl: lecture.rawVideoUrl,
+                        resolvedStream: streamData,
+                      });
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                  >
+                    <Download className="h-4 w-4 text-[#E50914]" />
+                    <span>Download Lecture (MP4/Audio)</span>
+                  </button>
+                )}
 
-            <button
-              onClick={() => {
-                const nextState = toggleLectureCompleted({
-                  batchId: lecture.batchId,
-                  subjectId: lecture.subjectId,
-                  topicId: lecture.topicId,
-                  videoId: lecture.videoId,
-                  title: lecture.title,
-                });
-                setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId, nextState));
-                onAdventureUpdate?.();
-              }}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition whitespace-nowrap backdrop-blur-md border ${
-                completed
-                  ? 'bg-emerald-600/90 border-emerald-400/50 text-white'
-                  : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
-              }`}
-              title={completed ? 'Stage Completed (+50 XP)' : 'Mark Lecture Complete (+50 XP)'}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              <span className="hidden lg:inline">{completed ? 'Cleared' : 'Complete'}</span>
-            </button>
+                <button
+                  onClick={() => {
+                    const nextState = toggleLectureCompleted({
+                      batchId: lecture.batchId,
+                      subjectId: lecture.subjectId,
+                      topicId: lecture.topicId,
+                      videoId: lecture.videoId,
+                      title: lecture.title,
+                    });
+                    setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId, nextState));
+                    onAdventureUpdate?.();
+                    setShowMoreMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                >
+                  <CheckCircle2
+                    className={`h-4 w-4 ${completed ? 'text-emerald-400' : 'text-[#E50914]'}`}
+                  />
+                  <span>{completed ? 'Lecture Cleared (+50 XP)' : 'Mark Lecture Complete'}</span>
+                </button>
 
-            {!streamData?.isYoutube && (
-              <button
-                onClick={() => setIsAudioOnly(!isAudioOnly)}
-                className={`hidden sm:flex h-10 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition backdrop-blur-md border ${
-                  isAudioOnly
-                    ? 'bg-emerald-600 border-emerald-400 text-white'
-                    : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
-                }`}
-                title="Audio-Only Mode"
-              >
-                <Headphones className="h-4 w-4" />
-              </button>
-            )}
+                <button
+                  onClick={() => {
+                    setFillMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
+                    setShowMoreMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                >
+                  <Expand className="h-4 w-4 text-[#E50914]" />
+                  <span>Screen Scaling: {fillMode === 'cover' ? 'Fill' : 'Fit'}</span>
+                </button>
 
-            {/* Sleep Timer */}
-            <div className="relative hidden sm:block">
-              <button
-                onClick={() => setShowSleepMenu(!showSleepMenu)}
-                className={`flex h-10 w-10 items-center justify-center rounded-full border transition backdrop-blur-md ${
-                  sleepTimerMinutes
-                    ? 'bg-[#E50914] border-[#E50914] text-white'
-                    : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
-                }`}
-                title="Sleep Timer"
-              >
-                <Moon className="h-4 w-4" />
-              </button>
-              {showSleepMenu && (
-                <div className="absolute right-0 top-12 z-50 w-44 rounded-xl border border-white/15 bg-neutral-950/95 p-2 shadow-2xl backdrop-blur-lg text-xs">
-                  <div className="px-2 py-1 font-bold text-neutral-400">Sleep Timer</div>
+                <button
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    toggleLandscapeRotate();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left font-semibold text-white hover:bg-[#E50914]/20"
+                >
+                  <Smartphone className="h-4 w-4 -rotate-90 text-[#E50914]" />
+                  <span>{forceCssLandscape ? 'Exit Landscape Rotate' : 'Rotate to Landscape'}</span>
+                </button>
+
+                <div className="my-1 border-t border-white/10" />
+                <div className="px-3 py-1 text-[11px] font-bold text-neutral-400 flex items-center gap-1.5">
+                  <Moon className="h-3.5 w-3.5 text-[#E50914]" />
+                  <span>Sleep Timer {sleepTimerMinutes ? `(${sleepTimerMinutes}m)` : ''}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1 px-2 pb-1">
                   {[15, 30, 45, 60].map((mins) => (
                     <button
                       key={mins}
                       onClick={() => {
-                        setSleepTimerMinutes(mins);
-                        setShowSleepMenu(false);
+                        setSleepTimerMinutes(sleepTimerMinutes === mins ? null : mins);
+                        setShowMoreMenu(false);
                       }}
-                      className={`w-full rounded-lg px-2.5 py-2 text-left font-medium transition ${
+                      className={`rounded-md py-1.5 font-mono text-[11px] font-bold transition ${
                         sleepTimerMinutes === mins
                           ? 'bg-[#E50914] text-white'
-                          : 'text-neutral-200 hover:bg-white/10'
+                          : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
                       }`}
                     >
-                      {mins} minutes
+                      {mins}m
                     </button>
                   ))}
-                  {sleepTimerMinutes !== null && (
-                    <button
-                      onClick={() => {
-                        setSleepTimerMinutes(null);
-                        setShowSleepMenu(false);
-                      }}
-                      className="mt-1 w-full rounded-lg px-2.5 py-2 text-left text-red-400 hover:bg-red-500/10"
-                    >
-                      Turn off timer
-                    </button>
-                  )}
                 </div>
-              )}
-            </div>
-
-            {!streamData?.isYoutube && (
-              <button
-                onClick={togglePiP}
-                className="hidden md:flex h-10 w-10 items-center justify-center rounded-full bg-black/50 border border-white/20 text-neutral-200 hover:bg-white/20 transition backdrop-blur-md"
-                title="Picture in Picture"
-              >
-                <PictureInPicture2 className="h-4 w-4" />
-              </button>
+              </div>
             )}
-
-            <button
-              onClick={toggleLandscapeRotate}
-              className={`flex h-10 w-10 items-center justify-center rounded-full border transition backdrop-blur-md ${
-                forceCssLandscape
-                  ? 'bg-[#E50914] border-[#E50914] text-white'
-                  : 'bg-black/50 border-white/20 text-white hover:bg-white/20'
-              }`}
-              title="Rotate Video to Landscape"
-            >
-              <Smartphone className="h-4 w-4 -rotate-90" />
-            </button>
           </div>
         </div>
 
+        {/* Left Middle Screen Lock / Unlock Button */}
+        {!streamData?.isYoutube && !resolving && !resolveError && (isHudVisible || isLocked) && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsLocked((prev) => !prev);
+              revealControls();
+            }}
+            className={`absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95 ${
+              isLocked
+                ? 'border-[#E50914] bg-[#E50914] text-white shadow-[0_0_20px_rgba(229,9,20,0.6)]'
+                : 'border-white/30 bg-black/55 text-white hover:border-[#E50914] hover:bg-[#E50914]/85'
+            }`}
+            title={isLocked ? 'Unlock Player Controls' : 'Lock Screen Controls'}
+          >
+            {isLocked ? <Lock className="h-5 w-5" /> : <Unlock className="h-5 w-5" />}
+          </button>
+        )}
+
+        {/* Loading State */}
         {resolving ? (
-          <div className="flex flex-col items-center gap-3.5 text-center p-6">
+          <div className="flex flex-col items-center gap-3 text-center p-6">
             <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
-            <p className="font-['Sora'] text-base sm:text-lg font-bold text-white tracking-tight">
-              Loading secure lecture stream...
-            </p>
-            <p className="text-xs sm:text-sm text-neutral-400">
-              Preparing adaptive HD video playback
+            <p className="text-sm sm:text-base font-medium text-neutral-200">
+              Loading Lecture...
             </p>
           </div>
         ) : resolveError ? (
@@ -860,7 +832,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   e.stopPropagation();
                   loadStream();
                 }}
-                className="rounded-md bg-[#E50914] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition shadow-lg"
+                className="rounded-lg bg-[#E50914] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition shadow-lg"
               >
                 Retry Stream
               </button>
@@ -869,7 +841,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   e.stopPropagation();
                   onBack();
                 }}
-                className="rounded-md border border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition"
+                className="rounded-lg border border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition"
               >
                 Go Back
               </button>
@@ -881,7 +853,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             title={lecture.title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            className="h-full w-full border-none pt-16"
+            className="h-full w-full border-none pt-14"
           />
         ) : (
           <>
@@ -939,72 +911,47 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               } ${isAudioOnly ? 'opacity-0 pointer-events-none absolute inset-0' : ''}`}
             />
 
-            {/* Netflix-Style Center Transport Controls (Always shown when paused or HUD visible!) */}
-            {(isHudVisible || !isPlaying) && !isAudioOnly && !isBuffering && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="pointer-events-auto absolute z-10 flex items-center gap-7 sm:gap-12 transition-opacity duration-200"
+            {/* Center Red Play Overlay when paused & not buffering */}
+            {!isLocked && !isPlaying && !isBuffering && !isAudioOnly && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlayPause();
+                }}
+                className="pointer-events-auto absolute z-10 flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-[#E50914] text-white shadow-[0_0_32px_rgba(229,9,20,0.65)] hover:bg-[#f40612] hover:scale-105 active:scale-95 transition"
+                title="Play Lecture"
               >
-                <button
-                  onClick={() => seekBy(-10)}
-                  className="group relative flex h-13 w-13 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/25 hover:bg-white/20 active:scale-90 transition"
-                  title="Rewind 10s"
-                >
-                  <RotateCcw className="h-6 w-6 sm:h-7 sm:w-7" />
-                  <span className="absolute -bottom-5 text-[10px] font-bold text-neutral-300 opacity-0 group-hover:opacity-100 transition">
-                    -10s
-                  </span>
-                </button>
-
-                <button
-                  onClick={togglePlayPause}
-                  className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-[#E50914] text-white shadow-[0_0_36px_rgba(229,9,20,0.65)] hover:bg-[#f40612] hover:scale-105 active:scale-95 transition"
-                  title={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? (
-                    <Pause className="h-8 w-8 sm:h-10 sm:w-10 fill-current" />
-                  ) : (
-                    <Play className="h-8 w-8 sm:h-10 sm:w-10 fill-current ml-1" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => seekBy(10)}
-                  className="group relative flex h-13 w-13 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/25 hover:bg-white/20 active:scale-90 transition"
-                  title="Forward 10s"
-                >
-                  <RotateCw className="h-6 w-6 sm:h-7 sm:w-7" />
-                  <span className="absolute -bottom-5 text-[10px] font-bold text-neutral-300 opacity-0 group-hover:opacity-100 transition">
-                    +10s
-                  </span>
-                </button>
-              </div>
+                <Play className="h-8 w-8 sm:h-9 sm:w-9 fill-current ml-1" />
+              </button>
             )}
 
-            {/* Quick Seek Indicator Toast */}
+            {/* Quick Seek Toast */}
             {seekToast && (
-              <div className="pointer-events-none absolute top-24 z-20 rounded-full bg-black/80 border border-white/15 px-4 py-1.5 font-mono text-xs sm:text-sm font-bold text-white backdrop-blur-md shadow-xl">
+              <div className="pointer-events-none absolute top-20 z-20 rounded-full bg-[#E50914] px-4 py-1.5 font-mono text-xs sm:text-sm font-bold text-white shadow-xl">
                 {seekToast}
               </div>
             )}
 
-            {/* Buffering Spinner */}
+            {/* Red Buffering Spinner ("Loading Lecture...") */}
             {isBuffering && !isAudioOnly && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/35">
                 <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
+                <span className="text-xs sm:text-sm font-medium text-neutral-200">
+                  Loading Lecture...
+                </span>
               </div>
             )}
 
             {/* Audio-Only Overlay */}
             {isAudioOnly && (
               <div className="flex flex-col items-center justify-center p-6 text-center z-10">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E50914]/20 border border-[#E50914]/50 shadow-2xl">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E50914]/20 border border-[#E50914] shadow-2xl">
                   <Headphones className="h-12 w-12 text-[#E50914] animate-pulse" />
                 </div>
-                <h3 className="mt-6 font-['Sora'] text-lg sm:text-xl font-bold text-white max-w-md">
+                <h3 className="mt-5 font-['Sora'] text-lg sm:text-xl font-bold text-white max-w-md">
                   {lecture.title}
                 </h3>
-                <p className="mt-1 text-xs sm:text-sm text-emerald-400 font-semibold">
+                <p className="mt-1 text-xs sm:text-sm text-neutral-300 font-medium">
                   Audio-Only Mode Active • Saving Battery &amp; Data
                 </p>
                 <button
@@ -1012,75 +959,90 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     e.stopPropagation();
                     setIsAudioOnly(false);
                   }}
-                  className="mt-5 rounded-md bg-[#E50914] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition"
+                  className="mt-5 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition"
                 >
                   Turn Video Back On
                 </button>
               </div>
             )}
 
-            {/* Bottom Netflix Control Scrim */}
+            {/* Bottom Controls Scrim (Matches screenshot layout, all buttons & accents RED!) */}
             <div
               onClick={(e) => e.stopPropagation()}
-              className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/95 via-black/75 to-transparent px-3 sm:px-6 pb-3.5 sm:pb-5 pt-10 transition-all duration-300 ${
+              className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/95 via-black/80 to-transparent px-3 sm:px-6 pb-3 sm:pb-4 pt-8 transition-all duration-200 ${
                 isHudVisible
                   ? 'opacity-100 translate-y-0'
                   : 'opacity-0 translate-y-4 pointer-events-none'
               }`}
             >
-              {/* Netflix Red Scrub Bar */}
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  onMouseMove={(e) => {
-                    if (!duration) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    setHoverTime({ ratio, time: ratio * duration });
-                  }}
-                  onMouseLeave={() => setHoverTime(null)}
-                  onClick={(e) => {
-                    const vid = videoRef.current;
-                    if (!vid || !duration) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    vid.currentTime = ratio * duration;
-                    setCurrentTime(ratio * duration);
-                    revealControls();
-                  }}
-                  className="group relative flex-1 h-1.5 hover:h-2.5 cursor-pointer rounded-full bg-white/25 transition-all"
-                >
-                  {hoverTime && (
-                    <div
-                      className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded bg-neutral-900/95 border border-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-lg"
-                      style={{ left: `${hoverTime.ratio * 100}%` }}
-                    >
-                      {formatTime(hoverTime.time)}
-                    </div>
-                  )}
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-white/35 pointer-events-none"
-                    style={{ width: `${bufferedPercent}%` }}
-                  />
-                  <div
-                    className="relative h-full rounded-full bg-[#E50914]"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 -ml-1.5 rounded-full bg-[#E50914] ring-2 ring-white shadow-md transition-transform group-hover:scale-125"
-                    style={{ left: `${progressPercent}%` }}
-                  />
+              {/* Time & Speed Row above Seek Bar */}
+              <div className="flex items-center justify-between mb-1.5 px-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs sm:text-sm font-semibold tabular-nums text-white">
+                    {formatTime(currentTime)}
+                  </span>
+                  <button
+                    onClick={cycleSpeed}
+                    className="rounded-md bg-[#E50914] hover:bg-[#f40612] px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-sm transition active:scale-95"
+                    title="Tap to change playback speed"
+                  >
+                    {playbackSpeed}x
+                  </button>
                 </div>
-                <span className="font-mono text-[11px] sm:text-xs font-semibold tabular-nums text-neutral-200 shrink-0">
-                  {formatTime(currentTime)} <span className="text-neutral-500">/</span> {formatTime(duration)}
+                <span className="font-mono text-xs sm:text-sm font-semibold tabular-nums text-white">
+                  {formatTime(duration)}
                 </span>
               </div>
 
-              {/* Bottom Controls Row */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 sm:gap-2.5">
+              {/* Red Scrub Bar */}
+              <div
+                onMouseMove={(e) => {
+                  if (!duration) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  setHoverTime({ ratio, time: ratio * duration });
+                }}
+                onMouseLeave={() => setHoverTime(null)}
+                onClick={(e) => {
+                  const vid = videoRef.current;
+                  if (!vid || !duration) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  vid.currentTime = ratio * duration;
+                  setCurrentTime(ratio * duration);
+                  revealControls();
+                }}
+                className="group relative w-full h-1.5 hover:h-2.5 cursor-pointer rounded-full bg-white/25 transition-all mb-3"
+              >
+                {hoverTime && (
+                  <div
+                    className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded bg-neutral-900/95 border border-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-lg"
+                    style={{ left: `${hoverTime.ratio * 100}%` }}
+                  >
+                    {formatTime(hoverTime.time)}
+                  </div>
+                )}
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-white/35 pointer-events-none"
+                  style={{ width: `${bufferedPercent}%` }}
+                />
+                <div
+                  className="relative h-full rounded-full bg-[#E50914]"
+                  style={{ width: `${progressPercent}%` }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 -ml-1.5 rounded-full bg-[#E50914] ring-2 ring-white shadow-md transition-transform group-hover:scale-125"
+                  style={{ left: `${progressPercent}%` }}
+                />
+              </div>
+
+              {/* Bottom Controls Row: Left [Play, -10s, +10s, Vol] | Right [Ask AI, Notes, PiP, Audio, Download, Settings, Fullscreen] */}
+              <div className="flex items-center justify-between gap-2">
+                {/* Left Transport Icons */}
+                <div className="flex items-center gap-1.5 sm:gap-3">
                   <button
                     onClick={togglePlayPause}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 active:scale-95 transition"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E50914] text-white hover:bg-[#f40612] active:scale-95 transition shadow-[0_0_14px_rgba(229,9,20,0.55)]"
                     title={isPlaying ? 'Pause' : 'Play'}
                   >
                     {isPlaying ? (
@@ -1092,152 +1054,218 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
                   <button
                     onClick={() => seekBy(-10)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white active:scale-95 transition"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] active:scale-95 transition"
                     title="Rewind 10s"
                   >
                     <RotateCcw className="h-5 w-5" />
+                    <span className="absolute text-[8px] font-extrabold leading-none mt-0.5">10</span>
                   </button>
 
                   <button
                     onClick={() => seekBy(10)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white active:scale-95 transition"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] active:scale-95 transition"
                     title="Forward 10s"
                   >
                     <RotateCw className="h-5 w-5" />
+                    <span className="absolute text-[8px] font-extrabold leading-none mt-0.5">10</span>
                   </button>
 
                   <button
                     onClick={() => setIsMuted(!isMuted)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white transition"
+                    className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                      isMuted
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-white hover:bg-[#E50914]'
+                    }`}
                     title={isMuted ? 'Unmute' : 'Mute'}
                   >
-                    {isMuted ? <VolumeX className="h-5 w-5 text-[#E50914]" /> : <Volume2 className="h-5 w-5" />}
+                    {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  {/* Fit vs Fill */}
+                {/* Right Utility Icons + Red Ask AI Pill */}
+                <div className="flex items-center gap-1 sm:gap-2">
+                  {/* Ask AI Pill (RED theme, ONLY inside Video Player!) */}
                   <button
                     onClick={() => {
-                      setFillMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
+                      setShowAiDrawer((prev) => !prev);
+                      setShowNotesDrawer(false);
+                      setShowSettingsMenu(false);
                       revealControls();
                     }}
-                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                      fillMode === 'cover'
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-neutral-200 hover:bg-white/15'
+                    className={`flex items-center gap-1.5 rounded-full border px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-bold transition whitespace-nowrap active:scale-95 ${
+                      showAiDrawer
+                        ? 'border-[#E50914] bg-[#E50914] text-white shadow-[0_0_18px_rgba(229,9,20,0.65)]'
+                        : 'border-[#E50914] bg-[#E50914]/15 text-white hover:bg-[#E50914]'
                     }`}
-                    title="Toggle Fit / Fill Screen"
+                    title="Ask Study AI about this lecture"
                   >
-                    <Expand className="h-3.5 w-3.5" />
-                    <span className="hidden xs:inline">{fillMode === 'cover' ? 'Fill' : 'Fit'}</span>
+                    <Sparkles className="h-4 w-4 text-[#ff6b73]" />
+                    <span>Ask AI</span>
                   </button>
 
-                  {/* Quality Picker */}
-                  {qualityLevels.length > 0 && (
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          setShowQualityMenu(!showQualityMenu);
-                          setShowSpeedMenu(false);
-                          revealControls();
-                        }}
-                        className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-200 hover:bg-white/15 transition"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
-                        <span>
-                          {currentLevel === -1
-                            ? 'Auto'
-                            : qualityLevels.find((q) => q.index === currentLevel)?.label || 'Auto'}
-                        </span>
-                      </button>
-                      {showQualityMenu && (
-                        <div className="absolute right-0 bottom-12 z-50 w-32 rounded-xl border border-white/15 bg-neutral-950/95 p-1.5 shadow-2xl backdrop-blur-lg">
-                          <button
-                            onClick={() => handleQualityChange(-1)}
-                            className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                              currentLevel === -1
-                                ? 'bg-[#E50914] text-white'
-                                : 'text-neutral-200 hover:bg-white/10'
-                            }`}
-                          >
-                            Auto
-                          </button>
-                          {qualityLevels.map((lvl) => (
-                            <button
-                              key={lvl.index}
-                              onClick={() => handleQualityChange(lvl.index)}
-                              className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                                currentLevel === lvl.index
-                                  ? 'bg-[#E50914] text-white'
-                                  : 'text-neutral-200 hover:bg-white/10'
-                              }`}
-                            >
-                              {lvl.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  {/* Notes / Attachments */}
+                  <button
+                    onClick={() => {
+                      setShowNotesDrawer((prev) => !prev);
+                      setShowAiDrawer(false);
+                      setShowSettingsMenu(false);
+                      revealControls();
+                    }}
+                    className={`relative flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                      showNotesDrawer
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-white hover:bg-[#E50914]'
+                    }`}
+                    title={`Lecture Notes (${attachments.length})`}
+                  >
+                    <List className="h-5 w-5" />
+                    {attachments.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#E50914] px-1 font-mono text-[9px] font-bold text-white ring-1 ring-black">
+                        {attachments.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Picture in Picture */}
+                  <button
+                    onClick={togglePiP}
+                    className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] transition active:scale-95"
+                    title="Picture in Picture"
+                  >
+                    <PictureInPicture2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </button>
+
+                  {/* Audio-Only Toggle */}
+                  <button
+                    onClick={() => setIsAudioOnly(!isAudioOnly)}
+                    className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                      isAudioOnly
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-white hover:bg-[#E50914]'
+                    }`}
+                    title="Audio-Only Mode"
+                  >
+                    <Headphones className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </button>
+
+                  {/* Lecture Download */}
+                  {!lecture.offlineId && (
+                    <button
+                      onClick={() => {
+                        openLectureDownloadModal({
+                          batchId: lecture.batchId,
+                          programId: lecture.programId,
+                          subjectId: lecture.subjectId,
+                          topicId: lecture.topicId,
+                          videoId: lecture.videoId,
+                          findKey: lecture.findKey,
+                          videoDetailsId: lecture.videoDetailsId,
+                          typeId: lecture.typeId,
+                          title: lecture.title,
+                          videoImg: lecture.videoImg,
+                          videoType: lecture.videoType || 'new',
+                          playType: lecture.playType || 'Lecture',
+                          rawVideoUrl: lecture.rawVideoUrl,
+                          resolvedStream: streamData,
+                        });
+                      }}
+                      className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-white hover:bg-[#E50914] transition active:scale-95"
+                      title="Download Lecture (MP4 / Audio)"
+                    >
+                      <Download className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </button>
                   )}
 
-                  {/* Speed Picker */}
+                  {/* Settings (Quality & Speed) */}
                   <div className="relative">
                     <button
                       onClick={() => {
-                        setShowSpeedMenu(!showSpeedMenu);
-                        setShowQualityMenu(false);
+                        setShowSettingsMenu((prev) => !prev);
+                        setShowMoreMenu(false);
                         revealControls();
                       }}
-                      className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-200 hover:bg-white/15 transition"
+                      className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                        showSettingsMenu
+                          ? 'bg-[#E50914] text-white'
+                          : 'text-white hover:bg-[#E50914]'
+                      }`}
+                      title="Quality & Speed Settings"
                     >
-                      <Gauge className="h-3.5 w-3.5 text-neutral-300" />
-                      <span>{playbackSpeed}x</span>
+                      <Settings className="h-5 w-5" />
                     </button>
-                    {showSpeedMenu && (
-                      <div className="absolute right-0 bottom-12 z-50 w-28 rounded-xl border border-white/15 bg-neutral-950/95 p-1.5 shadow-2xl backdrop-blur-lg max-h-52 overflow-y-auto">
-                        {speedOptions.map((spd) => (
-                          <button
-                            key={spd}
-                            onClick={() => {
-                              setPlaybackSpeed(spd);
-                              setShowSpeedMenu(false);
-                              revealControls();
-                            }}
-                            className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                              playbackSpeed === spd
-                                ? 'bg-[#E50914] text-white'
-                                : 'text-neutral-200 hover:bg-white/10'
-                            }`}
-                          >
-                            {spd}x
-                          </button>
-                        ))}
+
+                    {showSettingsMenu && (
+                      <div className="absolute right-0 bottom-12 z-50 w-56 rounded-xl border border-white/15 bg-neutral-950/95 p-3 shadow-2xl backdrop-blur-xl text-xs space-y-3">
+                        {qualityLevels.length > 0 && (
+                          <div>
+                            <div className="mb-1.5 font-bold text-neutral-400 uppercase tracking-wider text-[10px]">
+                              Video Quality
+                            </div>
+                            <div className="grid grid-cols-3 gap-1">
+                              <button
+                                onClick={() => handleQualityChange(-1)}
+                                className={`rounded-md py-1.5 font-semibold transition ${
+                                  currentLevel === -1
+                                    ? 'bg-[#E50914] text-white'
+                                    : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                }`}
+                              >
+                                Auto
+                              </button>
+                              {qualityLevels.map((lvl) => (
+                                <button
+                                  key={lvl.index}
+                                  onClick={() => handleQualityChange(lvl.index)}
+                                  className={`rounded-md py-1.5 font-semibold transition ${
+                                    currentLevel === lvl.index
+                                      ? 'bg-[#E50914] text-white'
+                                      : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                  }`}
+                                >
+                                  {lvl.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="mb-1.5 font-bold text-neutral-400 uppercase tracking-wider text-[10px]">
+                            Playback Speed
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {speedOptions.map((spd) => (
+                              <button
+                                key={spd}
+                                onClick={() => {
+                                  setPlaybackSpeed(spd);
+                                  setShowSettingsMenu(false);
+                                  revealControls();
+                                }}
+                                className={`rounded-md py-1.5 font-mono font-semibold transition ${
+                                  playbackSpeed === spd
+                                    ? 'bg-[#E50914] text-white'
+                                    : 'bg-white/10 text-neutral-200 hover:bg-[#E50914]/30'
+                                }`}
+                              >
+                                {spd}x
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Notes Button */}
-                  <button
-                    onClick={() => {
-                      setShowNotesDrawer(!showNotesDrawer);
-                      setShowAiDrawer(false);
-                      revealControls();
-                    }}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                      showNotesDrawer
-                        ? 'bg-[#E50914] text-white'
-                        : 'text-neutral-200 hover:bg-white/15'
-                    }`}
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span className="hidden xs:inline">Notes ({attachments.length})</span>
-                  </button>
-
-                  {/* Fullscreen Quick Toggle */}
+                  {/* Fullscreen Toggle */}
                   <button
                     onClick={toggleFullscreen}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 transition"
+                    className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                      isImmersiveFullscreen
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-white hover:bg-[#E50914]'
+                    }`}
                     title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Landscape Fullscreen'}
                   >
                     {isImmersiveFullscreen ? (
