@@ -4,7 +4,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  Sparkles,
   Play,
   Flag,
   ChevronLeft,
@@ -24,7 +23,6 @@ import {
   fetchPwBatchQuizzes,
   openPdfViewer,
   PwBatchQuizItem,
-  safeReadJson,
   startPwQuiz,
 } from '../services/batchService';
 import { recordStudyActivity } from '../services/adventureService';
@@ -49,14 +47,12 @@ interface BatchTestPack {
 interface BatchTestsPanelProps {
   batch: BatchItem;
   subjects: BatchSubject[];
-  onAskAi: (prompt: string) => void;
   onActivityUpdate?: () => void;
 }
 
 export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
   batch,
   subjects,
-  onAskAi,
   onActivityUpdate,
 }) => {
   const academicSubjects = useMemo(
@@ -78,15 +74,6 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
 
-  // Custom AI Test Builder scoped to this batch
-  const [customSubject, setCustomSubject] = useState<string>(
-    () => academicSubjects[0]?.subject || 'Physics'
-  );
-  const [customTopic, setCustomTopic] = useState<string>('');
-  const [customCount, setCustomCount] = useState<number>(5);
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-
   // Active CBT Exam Runner State
   const [activePack, setActivePack] = useState<BatchTestPack | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -102,7 +89,6 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
     setActivePack(null);
     setSubmitted(false);
     setError(null);
-    setCustomSubject(academicSubjects[0]?.subject || 'Physics');
   }, [batch.batch_id]);
 
   // Fetch PW official tests + quizzes for this batch
@@ -258,42 +244,6 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
     }
   };
 
-  const handleGenerateCustomTest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanTopic = customTopic.trim();
-    if (!cleanTopic || generating) return;
-    setGenerating(true);
-    setGenerateError(null);
-    try {
-      const res = await fetch('/api/ai/generate-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: customSubject || 'Science',
-          exam: batch.exam || `Class ${batch.class || '10'}`,
-          topic: `${cleanTopic} (${batch.name})`,
-          count: customCount,
-        }),
-      });
-      const json = await safeReadJson<any>(res, 'Could not generate test paper');
-      if (!json.success || !Array.isArray(json.questions)) {
-        throw new Error(json.message || 'Could not generate test paper.');
-      }
-      startPack({
-        id: `batch-ai-${Date.now()}`,
-        title: `${customSubject}: ${cleanTopic}`,
-        subject: customSubject,
-        exam: batch.name,
-        durationMinutes: Math.max(5, customCount * 2),
-        questions: json.questions,
-      });
-    } catch (err: any) {
-      setGenerateError(err?.message || 'Unable to generate chapter test right now.');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const formatClock = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -414,20 +364,6 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
                 <div className="rounded-xl bg-[var(--card-bg)] p-3 text-xs text-[var(--text-secondary)]">
                   <strong className="text-[var(--text-primary)]">Solution: </strong>
                   {q.explanation}
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onAskAi(
-                        `Explain this ${activePack.subject} question from ${batch.name}:\n${q.question}\nOptions: ${q.options.join(' | ')}`
-                      )
-                    }
-                    className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>Ask Study AI</span>
-                  </button>
                 </div>
               </div>
             );
@@ -720,7 +656,7 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
       ) : testSubTab === 'official' ? (
         officialTests.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)] p-6 text-center text-xs sm:text-sm text-[var(--text-secondary)]">
-            No official test updates found yet. Switch to Chapter DPP &amp; DHA Quizzes or build a mock test below!
+            No official test updates found yet. Switch to Chapter DPP &amp; DHA Quizzes above!
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -859,73 +795,6 @@ export const BatchTestsPanel: React.FC<BatchTestsPanelProps> = ({
           })}
         </div>
       )}
-
-      {/* Batch-Scoped AI Mock Test Builder */}
-      <form
-        onSubmit={handleGenerateCustomTest}
-        className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 space-y-3"
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[var(--primary-color)]" />
-          <h4 className="font-['Sora'] text-sm font-extrabold text-[var(--text-primary)]">
-            Generate Instant Practice Test for {batch.name}
-          </h4>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-          <select
-            value={customSubject}
-            onChange={(e) => setCustomSubject(e.target.value)}
-            className="sm:col-span-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
-          >
-            {academicSubjects.length > 0 ? (
-              academicSubjects.map((s, idx) => (
-                <option key={`${s._id}-${idx}`} value={s.subject}>
-                  {s.subject}
-                </option>
-              ))
-            ) : (
-              <>
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Mathematics">Mathematics</option>
-                <option value="Biology">Biology</option>
-              </>
-            )}
-          </select>
-
-          <input
-            type="text"
-            value={customTopic}
-            onChange={(e) => setCustomTopic(e.target.value)}
-            placeholder="Enter chapter name (e.g. Carbon Compounds, Electrostatics)"
-            className="sm:col-span-5 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
-          />
-
-          <select
-            value={customCount}
-            onChange={(e) => setCustomCount(Number(e.target.value))}
-            className="sm:col-span-2 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-2.5 py-2 font-mono text-xs font-semibold text-[var(--text-primary)] focus:outline-none"
-          >
-            <option value={5}>5 Qs</option>
-            <option value={8}>8 Qs</option>
-            <option value={10}>10 Qs</option>
-          </select>
-
-          <button
-            type="submit"
-            disabled={generating || !customTopic.trim()}
-            className="sm:col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-3 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition"
-          >
-            {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            <span>{generating ? 'Building...' : 'Start'}</span>
-          </button>
-        </div>
-
-        {generateError && (
-          <div className="text-xs text-red-400">{generateError}</div>
-        )}
-      </form>
     </div>
   );
 };

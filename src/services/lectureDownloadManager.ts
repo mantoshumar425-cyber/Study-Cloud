@@ -529,57 +529,76 @@ export async function openLectureDownloadModal(target: LectureDownloadTarget): P
   });
 
   try {
-    const stream =
-      target.resolvedStream ||
-      (await resolveVideoStream({
-        batchId: target.batchId,
-        programId: target.programId,
-        subjectId: target.subjectId,
-        topicId: target.topicId,
-        videoId: target.videoId,
-        findKey: target.findKey,
-        videoDetailsId: target.videoDetailsId,
-        parentScheduleId: target.parentScheduleId,
-        typeId: target.typeId,
-        videoName: target.title,
-        videoImg: target.videoImg,
-        videoType: target.videoType || 'new',
-        playType: target.playType || 'Lecture',
-        videoUrl: target.rawVideoUrl,
-        isLive: target.isLive,
-        urlType: target.urlType,
-      }));
+    const fetchStreamAndInspect = async (useCached: boolean) => {
+      const stream =
+        useCached && target.resolvedStream
+          ? target.resolvedStream
+          : await resolveVideoStream({
+              batchId: target.batchId,
+              programId: target.programId,
+              subjectId: target.subjectId,
+              topicId: target.topicId,
+              videoId: target.videoId,
+              findKey: target.findKey,
+              videoDetailsId: target.videoDetailsId,
+              parentScheduleId: target.parentScheduleId,
+              typeId: target.typeId,
+              videoName: target.title,
+              videoImg: target.videoImg,
+              videoType: target.videoType || 'new',
+              playType: target.playType || 'Lecture',
+              videoUrl: target.rawVideoUrl,
+              isLive: target.isLive,
+              urlType: target.urlType,
+            });
 
-    if (stream.isYoutube) {
+      if (stream.isYoutube) {
+        return { isYoutube: true as const, stream, json: null };
+      }
+
+      const hlsUrl = stream.hlsUrl || stream.streamUrl || '';
+      if (!hlsUrl) {
+        throw new Error('Is lecture ka video link abhi available nahi hai.');
+      }
+
+      const qs = new URLSearchParams({
+        hls_url: hlsUrl,
+        is_direct_mp4: stream.isDirectMp4 ? '1' : '0',
+      });
+      if (stream.dashUrl) qs.set('dash_url', stream.dashUrl);
+
+      const res = await fetch(`/api/lecture-download/inspect?${qs.toString()}`);
+      const json = await safeReadJson<any>(res, 'Could not inspect video qualities');
+      if (!json.success) {
+        throw new Error(json.message || 'Could not inspect video qualities.');
+      }
+      return { isYoutube: false as const, stream, json };
+    };
+
+    let inspected;
+    try {
+      inspected = await fetchStreamAndInspect(true);
+    } catch (firstErr) {
+      if (target.resolvedStream) {
+        inspected = await fetchStreamAndInspect(false);
+      } else {
+        throw firstErr;
+      }
+    }
+
+    if (inspected.isYoutube) {
       setState({
         inspecting: false,
         isYoutubeNotice: true,
-        youtubeUrl: stream.rawUrl || stream.youtubeEmbedUrl,
+        youtubeUrl: inspected.stream.rawUrl || inspected.stream.youtubeEmbedUrl,
       });
       return;
     }
 
-    const hlsUrl = stream.hlsUrl || stream.streamUrl || '';
-    if (!hlsUrl) {
-      throw new Error('Is lecture ka video link abhi available nahi hai.');
-    }
-
-    const qs = new URLSearchParams({
-      hls_url: hlsUrl,
-      is_direct_mp4: stream.isDirectMp4 ? '1' : '0',
-    });
-    if (stream.dashUrl) qs.set('dash_url', stream.dashUrl);
-
-    const res = await fetch(`/api/lecture-download/inspect?${qs.toString()}`);
-    const json = await safeReadJson<any>(res, 'Could not inspect video qualities');
-    if (!json.success) {
-      throw new Error(json.message || 'Could not inspect video qualities.');
-    }
-
     setState({
       inspecting: false,
-      durationSecs: Number(json.durationSecs || 0),
-      options: Array.isArray(json.options) ? json.options : [],
+      durationSecs: Number(inspected.json.durationSecs || 0),
+      options: Array.isArray(inspected.json.options) ? inspected.json.options : [],
     });
   } catch (err: any) {
     setState({

@@ -46,7 +46,6 @@ import { AddBatchModal } from './components/AddBatchModal';
 import { FavoritesView } from './components/FavoritesView';
 import { WatchHistoryView } from './components/WatchHistoryView';
 import { SettingsView } from './components/SettingsView';
-import { StudyAiPanel } from './components/StudyAiPanel';
 import { KhazanaExplorer } from './components/KhazanaExplorer';
 import { Sidebar } from './components/Sidebar';
 import { PiView } from './components/PiView';
@@ -69,7 +68,6 @@ const VALID_NAV_TABS: NavTab[] = [
   'pi',
   'community',
   'test',
-  'ai',
   'downloads',
   'favorites',
   'history',
@@ -119,7 +117,6 @@ export default function App() {
   const [appControls, setAppControls] = useState<AppControls | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
-  const [initialAiPrompt, setInitialAiPrompt] = useState<string | null>(null);
 
   // Pagination for large 18k batch catalog
   const [displayCount, setDisplayCount] = useState(36);
@@ -214,14 +211,6 @@ export default function App() {
 
   const handleRefreshHistory = () => {
     setWatchHistory(getWatchHistory());
-  };
-
-  const handleAskAi = (prompt?: string) => {
-    if (prompt) {
-      setInitialAiPrompt(prompt);
-    }
-    setCurrentTab('ai');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const adventureMetrics = useMemo(() => getAdventureMetrics(adventureState), [adventureState]);
@@ -403,21 +392,10 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="flex-1 pb-16 lg:pb-6">
-          {/* VIEW 1: STUDY AI */}
-          {currentTab === 'ai' ? (
-            <div className="mx-auto max-w-6xl px-3 sm:px-5 py-4">
-              <StudyAiPanel
-                variant="page"
-                scopeKey="global"
-                initialPrompt={initialAiPrompt}
-                onConsumeInitialPrompt={() => setInitialAiPrompt(null)}
-              />
-            </div>
-          ) : currentTab === 'pi' ? (
+          {currentTab === 'pi' ? (
             /* VIEW 1A: PW PI PRO (OTT) WORKSPACE */
             <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <PiView
-                onAskAi={(prompt) => handleAskAi(prompt)}
                 onActivityUpdate={() => setAdventureState(getAdventureState())}
                 xp={adventureMetrics.xp}
                 onPlayLecture={(lec) => {
@@ -450,17 +428,15 @@ export default function App() {
                 appControls={appControls}
                 myBatches={myBatches}
                 allBatches={allBatches}
-                onAskAi={(prompt) => handleAskAi(prompt)}
                 onSelectBatch={(batch) => setSelectedBatch(batch)}
               />
             </div>
           ) : currentTab === 'test' ? (
-            /* VIEW 1C: TEST CBT PRACTICE & AI MOCK EXAM */
+            /* VIEW 1C: TEST CBT PRACTICE & MOCK EXAM */
             <div className="w-full px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
               <TestView
                 myBatches={myBatches}
                 allBatches={allBatches}
-                onAskAi={(prompt) => handleAskAi(prompt)}
                 onActivityUpdate={() => setAdventureState(getAdventureState())}
               />
             </div>
@@ -575,20 +551,20 @@ export default function App() {
               <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[var(--text-secondary)]">
-                    <span className="font-bold text-[var(--primary-color)]">
+                    <span className="font-['Sora'] font-extrabold tracking-tight text-[var(--primary-color)]">
                       Study Cloud · Lv.{adventureMetrics.level} {adventureMetrics.rank}
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-mono tabular-nums">
+                    <span className="font-mono tabular-nums font-semibold">
                       {allBatches.length > 0 ? `${allBatches.length.toLocaleString()} Batches` : 'Loading Batches...'}
                     </span>
                   </div>
-                  <h1 className="font-['Sora'] text-xl sm:text-2xl lg:text-3xl font-extrabold text-[var(--text-primary)] leading-tight">
-                    Study Cloud — Batches & Learning Hub
+                  <h1 className="font-['Sora'] text-2xl sm:text-3xl lg:text-[2.1rem] font-extrabold tracking-[-0.03em] leading-[1.15] bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--primary-color)] bg-clip-text text-transparent">
+                    Study Cloud — Batches &amp; Learning Hub
                   </h1>
-                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
+                  <p className="text-[13px] sm:text-[14.5px] font-medium text-[var(--text-secondary)] max-w-2xl leading-relaxed tracking-[-0.005em]">
                     Track your daily study streak, explore Khazana, PW Pi, PW Community, PW Test, and stream
-                    lectures with notes inside one distraction-free workspace.
+                    lectures with HD notes inside one distraction-free workspace.
                   </p>
                 </div>
 

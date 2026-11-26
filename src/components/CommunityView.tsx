@@ -5,7 +5,6 @@ import {
   MessageSquare,
   ThumbsUp,
   Send,
-  Sparkles,
   Loader2,
   BookOpen,
   FileText,
@@ -34,7 +33,6 @@ interface CommunityViewProps {
   appControls?: AppControls | null;
   myBatches: BatchItem[];
   allBatches: BatchItem[];
-  onAskAi: (prompt: string) => void;
   onSelectBatch: (batch: BatchItem) => void;
 }
 
@@ -73,7 +71,6 @@ const DEFAULT_POSTS: CommunityPost[] = [
 export const CommunityView: React.FC<CommunityViewProps> = ({
   myBatches,
   allBatches,
-  onAskAi,
   onSelectBatch,
 }) => {
   const [posts, setPosts] = useState<CommunityPost[]>(() => {
@@ -367,15 +364,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </button>
                       )}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => onAskAi(`Summarize and explain key dates/action items from this notice:\n${item.announcement}`)}
-                      className="flex items-center gap-1 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--primary-color)]"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Ask Study AI</span>
-                    </button>
                   </div>
                 </div>
               ))}
@@ -503,15 +491,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       <span>Reply ({post.replies.length})</span>
                     </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onAskAi(post.content)}
-                    className="flex items-center gap-1 font-bold text-[var(--primary-color)] hover:underline"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>Solve with AI</span>
-                  </button>
                 </div>
 
                 {post.replies.length > 0 && (

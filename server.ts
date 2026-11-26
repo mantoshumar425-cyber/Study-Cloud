@@ -138,12 +138,23 @@ function sortBatchesNewestFirst(list: any[]): any[] {
     seen.add(id);
     deduped.push(item);
   }
+  const activeHorizonMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
   return deduped.sort((a, b) => {
     const ta = a?.start_date ? Date.parse(a.start_date) : 0;
     const tb = b?.start_date ? Date.parse(b.start_date) : 0;
     const va = Number.isFinite(ta) ? ta : 0;
     const vb = Number.isFinite(tb) ? tb : 0;
-    return vb - va;
+
+    // Demote far-future placeholder batches (e.g. late 2027 / 2028) below active batches
+    const aFuture = va > activeHorizonMs ? 1 : 0;
+    const bFuture = vb > activeHorizonMs ? 1 : 0;
+    if (aFuture !== bFuture) return aFuture - bFuture;
+
+    // Within same tier, prefer entries with cover image and valid exam metadata slightly if dates tie
+    if (vb !== va) return vb - va;
+    const aReady = (a?.photo ? 1 : 0) + (a?.exam ? 1 : 0);
+    const bReady = (b?.photo ? 1 : 0) + (b?.exam ? 1 : 0);
+    return bReady - aReady;
   });
 }
 
@@ -713,14 +724,14 @@ export function createApiApp(): express.Express {
       : spAllJson?.batches || spAllJson?.data || [];
     for (const b of spAllMain) upsertBatch(batchMap, b, false);
 
-    // 4. StudyParcham /api/batches (featured latest launches - keep fresh date fallback so newest appear first)
+    // 4. StudyParcham /api/batches (use stable fallback date so entries without start_date don't crowd out active batches)
     const spApiMain = Array.isArray(spApiJson)
       ? spApiJson
       : spApiJson?.data || spApiJson?.batches || [];
-    const nowBase = Date.now();
+    const fallbackBaseMs = Date.parse('2026-04-01T00:00:00.000Z');
     spApiMain.forEach((b: any, i: number) => {
-      const freshIso = new Date(nowBase - i * 60000).toISOString();
-      upsertBatch(batchMap, b, false, freshIso);
+      const fallbackIso = new Date(fallbackBaseMs - i * 60000).toISOString();
+      upsertBatch(batchMap, b, false, fallbackIso);
     });
 
     const normalized = {

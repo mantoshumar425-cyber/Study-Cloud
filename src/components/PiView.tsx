@@ -12,7 +12,6 @@ import {
   Play,
   RotateCcw,
   Search,
-  Sparkles,
   Trophy,
   UserCheck,
   UserPlus,
@@ -31,7 +30,6 @@ import {
   PiTeacherProfileResponse,
 } from '../types';
 import {
-  askPwPi,
   downloadPdfFile,
   fetchPiOttCategories,
   fetchPiOttHome,
@@ -47,7 +45,6 @@ import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 import type { PlayLecturePayload } from './BatchDetailsModal';
 
 interface PiViewProps {
-  onAskAi: (prompt?: string) => void;
   onActivityUpdate?: () => void;
   onPlayLecture?: (lecture: PlayLecturePayload) => void;
   xp?: number;
@@ -76,7 +73,6 @@ function getInitials(name: string): string {
 }
 
 export const PiView: React.FC<PiViewProps> = ({
-  onAskAi,
   onActivityUpdate,
   onPlayLecture,
   xp = 0,
@@ -140,12 +136,6 @@ export const PiView: React.FC<PiViewProps> = ({
   const [quizIdx, setQuizIdx] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
-
-  // Concept Doubt Drawer inside Pi
-  const [showConceptSolver, setShowConceptSolver] = useState(false);
-  const [solverPrompt, setSolverPrompt] = useState('');
-  const [solverAnswer, setSolverAnswer] = useState('');
-  const [solverLoading, setSolverLoading] = useState(false);
 
   // Debounce concept search
   useEffect(() => {
@@ -338,29 +328,9 @@ export const PiView: React.FC<PiViewProps> = ({
       setQuizAnswers({});
       setQuizSubmitted(false);
     } catch {
-      onAskAi(`Create a quick ${card.questionsCount}-question MCQ practice test for ${card.subject}: ${card.title}`);
+      // ignore unavailable quiz
     } finally {
       setLoadingQuizId(null);
-    }
-  };
-
-  const handleSolveConcept = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!solverPrompt.trim() || solverLoading) return;
-    setSolverLoading(true);
-    try {
-      const res = await askPwPi({
-        query: solverPrompt.trim(),
-        subject: homeData?.category?.name || 'Science',
-        mode: 'concept',
-      });
-      setSolverAnswer(res.answer);
-      recordStudyActivity();
-      onActivityUpdate?.();
-    } catch {
-      onAskAi(solverPrompt.trim());
-    } finally {
-      setSolverLoading(false);
     }
   };
 
@@ -455,20 +425,6 @@ export const PiView: React.FC<PiViewProps> = ({
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowConceptSolver((v) => !v)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
-                showConceptSolver
-                  ? 'border-[var(--primary-color)] bg-[var(--primary-color)] text-white'
-                  : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:border-[var(--primary-color)]'
-              }`}
-              title="Quick Concept & Formula Solver"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Pi Solver</span>
-            </button>
-
             <div className="hidden md:flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 font-mono tabular-nums text-xs font-extrabold text-amber-400">
               <Trophy className="h-3.5 w-3.5" />
               <span>{xp} XP</span>
@@ -499,49 +455,6 @@ export const PiView: React.FC<PiViewProps> = ({
           </div>
         )}
       </div>
-
-      {/* Collapsible Pi Concept & Derivation Solver */}
-      {showConceptSolver && (
-        <div className="rounded-2xl border border-[var(--primary-color)]/35 bg-[var(--card-bg)] p-4 space-y-3 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-400" />
-              <h3 className="font-['Sora'] text-sm font-extrabold text-[var(--text-primary)]">
-                Quick Concept &amp; Formula Explainer ({activeCategory.name})
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowConceptSolver(false)}
-              className="text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            >
-              Close
-            </button>
-          </div>
-          <form onSubmit={handleSolveConcept} className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={solverPrompt}
-              onChange={(e) => setSolverPrompt(e.target.value)}
-              placeholder="Ask any Physics, Chem, Maths, or Exam concept (e.g., Rotational moment of inertia shortcuts)..."
-              className="flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3.5 py-2 text-xs sm:text-sm text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={solverLoading || !solverPrompt.trim()}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition"
-            >
-              {solverLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              <span>Explain Concept</span>
-            </button>
-          </form>
-          {solverAnswer && (
-            <div className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-3.5 text-xs sm:text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-              {solverAnswer}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Loading / Error State */}
       {loadingHome ? (

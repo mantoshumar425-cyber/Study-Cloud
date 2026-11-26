@@ -4,7 +4,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  Sparkles,
   Play,
   Flag,
   ChevronLeft,
@@ -24,7 +23,6 @@ import {
   fetchPwBatchQuizzes,
   openPdfViewer,
   PwBatchQuizItem,
-  safeReadJson,
   startPwQuiz,
 } from '../services/batchService';
 import { recordStudyActivity } from '../services/adventureService';
@@ -49,7 +47,6 @@ interface PracticePack {
 interface TestViewProps {
   myBatches?: BatchItem[];
   allBatches?: BatchItem[];
-  onAskAi: (prompt: string) => void;
   onActivityUpdate?: () => void;
 }
 
@@ -259,17 +256,8 @@ const DEFAULT_PW_TEST_BATCHES: Array<{ batch_id: string; name: string }> = [
 export const TestView: React.FC<TestViewProps> = ({
   myBatches = [],
   allBatches = [],
-  onAskAi,
   onActivityUpdate,
 }) => {
-  // Custom AI test generator state
-  const [aiSubject, setAiSubject] = useState('Physics');
-  const [aiExam, setAiExam] = useState('IIT-JEE');
-  const [aiTopic, setAiTopic] = useState('Current Electricity & Kirchhoff Laws');
-  const [aiCount, setAiCount] = useState(5);
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-
   // PW Test Proxy Browser State
   const pwBatchOptions = useMemo(() => {
     const merged = [
@@ -422,41 +410,6 @@ export const TestView: React.FC<TestViewProps> = ({
       setPwQuizError(err?.message || 'Failed to start Official Test.');
     } finally {
       setLaunchingQuizId(null);
-    }
-  };
-
-  const handleGenerateAiTest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiTopic.trim() || generating) return;
-    setGenerating(true);
-    setGenerateError(null);
-    try {
-      const res = await fetch('/api/ai/generate-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: aiSubject,
-          exam: aiExam,
-          topic: aiTopic.trim(),
-          count: aiCount,
-        }),
-      });
-      const json = await safeReadJson<any>(res, 'Could not generate practice test');
-      if (!json.success || !Array.isArray(json.questions)) {
-        throw new Error(json.message || 'Could not generate practice test.');
-      }
-      startPack({
-        id: `ai-${Date.now()}`,
-        title: `${aiSubject}: ${aiTopic.trim()}`,
-        subject: aiSubject,
-        exam: aiExam,
-        durationMinutes: Math.max(5, aiCount * 2),
-        questions: json.questions,
-      });
-    } catch (err: any) {
-      setGenerateError(err?.message || 'Unable to generate custom test right now.');
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -636,21 +589,6 @@ export const TestView: React.FC<TestViewProps> = ({
                 <div className="rounded-xl bg-[var(--bg-secondary)] p-3 text-xs text-[var(--text-secondary)] leading-relaxed">
                   <strong className="text-[var(--text-primary)]">Solution: </strong>
                   {q.explanation}
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onAskAi(
-                        `Explain this ${activePack.subject} question step-by-step:\n${q.question}\nOptions: ${q.options.join(' | ')}`
-                      )
-                    }
-                    className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>Ask Study AI for Deeper Explanation</span>
-                  </button>
                 </div>
               </div>
             );
@@ -855,8 +793,8 @@ export const TestView: React.FC<TestViewProps> = ({
               PW Batch Quizzes, Tests & Mock Exams
             </h1>
             <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
-              Browse live PW batch DPP quizzes via proxy, attempt timed JEE/NEET/Board CBT tests
-              with +4/-1 NTA scoring, or generate a custom chapter mock test.
+              Browse live PW batch DPP quizzes via proxy and attempt timed JEE/NEET/Board CBT tests
+              with +4/-1 NTA scoring.
             </p>
           </div>
         </div>
@@ -1108,83 +1046,6 @@ export const TestView: React.FC<TestViewProps> = ({
           </div>
         )}
       </div>
-
-      {/* Custom AI Mock Test Generator */}
-      <form
-        onSubmit={handleGenerateAiTest}
-        className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-4 sm:p-5 space-y-4"
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-[var(--primary-color)]" />
-          <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)]">
-            Generate Custom Chapter Mock Test
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <select
-            value={aiExam}
-            onChange={(e) => setAiExam(e.target.value)}
-            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
-          >
-            <option value="IIT-JEE">Exam: IIT-JEE</option>
-            <option value="NEET">Exam: NEET</option>
-            <option value="Class 12 Boards">Exam: Class 12 Boards</option>
-            <option value="Class 10 Foundation">Exam: Class 10 Foundation</option>
-          </select>
-
-          <select
-            value={aiSubject}
-            onChange={(e) => setAiSubject(e.target.value)}
-            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:border-[var(--primary-color)] focus:outline-none"
-          >
-            <option value="Physics">Physics</option>
-            <option value="Chemistry">Chemistry</option>
-            <option value="Mathematics">Mathematics</option>
-            <option value="Biology">Biology</option>
-          </select>
-
-          <input
-            type="text"
-            value={aiTopic}
-            onChange={(e) => setAiTopic(e.target.value)}
-            placeholder="Chapter / Topic (e.g. Ray Optics)"
-            className="rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:border-[var(--primary-color)] focus:outline-none"
-          />
-
-          <div className="flex gap-2">
-            <select
-              value={aiCount}
-              onChange={(e) => setAiCount(Number(e.target.value))}
-              className="w-24 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] px-2.5 py-2 font-mono text-xs sm:text-sm font-semibold text-[var(--text-primary)] focus:outline-none"
-            >
-              <option value={5}>5 Qs</option>
-              <option value={8}>8 Qs</option>
-              <option value={10}>10 Qs</option>
-            </select>
-
-            <button
-              type="submit"
-              disabled={generating || !aiTopic.trim()}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--primary-color)] px-4 py-2 text-xs sm:text-sm font-bold text-white hover:opacity-90 disabled:opacity-50 transition whitespace-nowrap"
-            >
-              {generating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              <span>{generating ? 'Building...' : 'Start AI Test'}</span>
-            </button>
-          </div>
-        </div>
-
-        {generateError && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-300">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{generateError}</span>
-          </div>
-        )}
-      </form>
 
       {/* Instant Ready Practice Series */}
       <div className="space-y-3">

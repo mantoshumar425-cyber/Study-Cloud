@@ -5,7 +5,6 @@ import {
   Compass,
   Users,
   ClipboardCheck,
-  Sparkles,
   Palette,
   Heart,
   History,
@@ -68,7 +67,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pi', label: 'Pi', subtitle: 'Pi Pro OTT concept vault', icon: Sigma },
     { id: 'community', label: 'Community', subtitle: 'Channels & study lounge', icon: Users },
     { id: 'test', label: 'Test', subtitle: 'CBT mock & practice sets', icon: ClipboardCheck },
-    { id: 'ai', label: 'AI', subtitle: 'Study AI doubt solver', icon: Sparkles },
   ];
 
   const utilityItems: Array<{
@@ -135,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto px-2.5 py-3.5 space-y-4">
         <div className="space-y-1">
           {!compact && (
-            <div className="px-2.5 pb-1 text-[11px] font-bold tracking-wide text-[var(--text-secondary)]">
+            <div className="px-2.5 pb-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[var(--text-secondary)]/85">
               Study Workspace
             </div>
           )}
@@ -161,12 +159,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
                 {!compact && (
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-bold leading-tight whitespace-nowrap truncate">
+                    <div className="font-['Sora'] text-[13px] font-bold tracking-[-0.01em] leading-tight whitespace-nowrap truncate">
                       {item.label}
                     </div>
                     <div
-                      className={`text-[11px] truncate ${
-                        isActive ? 'text-white/80' : 'text-[var(--text-secondary)]'
+                      className={`text-[11px] font-medium truncate ${
+                        isActive ? 'text-white/85' : 'text-[var(--text-secondary)]'
                       }`}
                     >
                       {item.subtitle}

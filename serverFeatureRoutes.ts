@@ -1636,8 +1636,14 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
 
   app.post('/api/lecture-download/start', async (req, res) => {
     try {
-      const { url = '', title = 'PW Lecture', qualityLabel = '720p', format = 'mp4', durationSecs = 0 } =
-        req.body || {};
+      const {
+        url = '',
+        title = 'PW Lecture',
+        qualityLabel = '720p',
+        format = 'mp4',
+        durationSecs = 0,
+        isDirectMp4 = false,
+      } = req.body || {};
       const resolvedUrl = applyCachedStudyParchamSig(unwrapLocalProxyUrl(String(url), req));
       if (!resolvedUrl) {
         return res.status(400).json({ success: false, message: 'Download URL is required' });
@@ -1667,10 +1673,40 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
       };
       downloadJobs.set(jobId, job);
 
-      const ffArgs =
-        ext === 'm4a'
-          ? ['-y', '-loglevel', 'error', '-progress', 'pipe:1', '-i', resolvedUrl, '-vn', '-c:a', 'copy', '-movflags', '+faststart', filePath]
-          : ['-y', '-loglevel', 'error', '-progress', 'pipe:1', '-i', resolvedUrl, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', filePath];
+      const isMp4Input = Boolean(isDirectMp4) || /\.mp4(\?|$)/i.test(resolvedUrl);
+      const localPort = Number(process.env.PORT) || req.socket?.localPort || 3000;
+      let ffmpegInput = resolvedUrl;
+      if (!isMp4Input) {
+        try {
+          const parsed = new URL(resolvedUrl);
+          const sigQ = parsed.search ? parsed.search.slice(1) : '';
+          ffmpegInput = `http://127.0.0.1:${localPort}/api/hls-proxy?url=${encodeURIComponent(
+            resolvedUrl
+          )}${sigQ ? `&sig=${encodeURIComponent(sigQ)}` : ''}`;
+        } catch {
+          ffmpegInput = resolvedUrl;
+        }
+      }
+
+      const ffArgs: string[] = ['-y', '-loglevel', 'error', '-progress', 'pipe:1'];
+      if (!isMp4Input) {
+        ffArgs.push(
+          '-allowed_extensions',
+          'ALL',
+          '-protocol_whitelist',
+          'file,http,https,tcp,tls,crypto'
+        );
+      }
+      ffArgs.push('-i', ffmpegInput);
+
+      if (ext === 'm4a') {
+        ffArgs.push('-vn', '-c:a', 'copy');
+        if (!isMp4Input) ffArgs.push('-bsf:a', 'aac_adtstoasc');
+      } else {
+        ffArgs.push('-c', 'copy');
+        if (!isMp4Input) ffArgs.push('-bsf:a', 'aac_adtstoasc');
+      }
+      ffArgs.push('-movflags', '+faststart', filePath);
 
       const proc = spawn('ffmpeg', ffArgs);
       job.proc = proc;
@@ -1678,6 +1714,7 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
       let errOut = '';
       proc.stderr.on('data', (d) => {
         errOut += d.toString();
+        if (errOut.length > 4000) errOut = errOut.slice(-2000);
       });
       proc.stdout.on('data', (chunk) => {
         const str = chunk.toString();
@@ -1714,7 +1751,7 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
           job.percent = 100;
         } else {
           job.status = 'error';
-          job.error = errOut.trim().slice(0, 200) || `ffmpeg exited with code ${code}`;
+          job.error = errOut.trim().slice(-240) || `ffmpeg exited with code ${code}`;
         }
       });
 

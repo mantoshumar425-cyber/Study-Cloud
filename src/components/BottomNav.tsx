@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Gem, ClipboardCheck, Sparkles, Menu } from 'lucide-react';
+import { BookOpen, Gem, ClipboardCheck, Sigma, Menu } from 'lucide-react';
 import { NavTab } from '../types';
 
 interface BottomNavProps {
@@ -16,11 +16,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const tabs = [
     { id: 'batches' as NavTab, label: 'Batches', icon: BookOpen },
     { id: 'khazana' as NavTab, label: 'Khazana', icon: Gem },
+    { id: 'pi' as NavTab, label: 'Pi', icon: Sigma },
     { id: 'test' as NavTab, label: 'Test', icon: ClipboardCheck },
-    { id: 'ai' as NavTab, label: 'AI', icon: Sparkles },
   ];
 
-  const isSlidebarTabActive = ['pi', 'community', 'downloads', 'favorites', 'history', 'settings'].includes(
+  const isSlidebarTabActive = ['community', 'downloads', 'favorites', 'history', 'settings'].includes(
     currentTab
   );
 

@@ -344,6 +344,27 @@ function getPwRequestHeaders(): Record<string, string> {
   return token ? { 'x-pw-token': token } : {};
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit = {},
+  retries = 2
+): Promise<Response> {
+  let lastErr: any = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status < 500 || res.status === 501 || attempt === retries) {
+        return res;
+      }
+    } catch (err) {
+      lastErr = err;
+      if (attempt === retries) throw err;
+    }
+    await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+  }
+  throw lastErr || new Error('Network request failed');
+}
+
 async function buildApiError(res: Response, fallbackLabel: string): Promise<Error> {
   let msg = `${fallbackLabel} (${res.status})`;
   let needsPwLogin = false;
@@ -417,7 +438,7 @@ export async function fetchBatchDetails(batchId: string): Promise<BatchDetailsRe
   }
 
   const reqPromise = (async () => {
-    const res = await fetch(`/api/batch/${encodeURIComponent(batchId)}`, {
+    const res = await fetchWithRetry(`/api/batch/${encodeURIComponent(batchId)}`, {
       headers: getPwRequestHeaders(),
     });
     if (!res.ok) {
@@ -446,7 +467,7 @@ export async function fetchSubjectTopics(
   subjectSlug: string,
   page = 1
 ): Promise<{ topics: BatchTopic[]; paginate: any }> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `/api/topics/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?page=${page}`,
     { headers: getPwRequestHeaders() }
   );
@@ -468,7 +489,7 @@ export async function fetchTopicContents(
     contentType,
     page: String(page),
   });
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `/api/contents/${encodeURIComponent(batchId)}/${encodeURIComponent(subjectSlug)}?${params.toString()}`,
     { headers: getPwRequestHeaders() }
   );
@@ -620,7 +641,7 @@ export async function resolveVideoStream(params: ResolveVideoStreamParams): Prom
     if (params.typeId) qs.set('typeId', params.typeId);
     if (params.urlType) qs.set('url_type', params.urlType);
 
-    const res = await fetch(`/api/stream?${qs.toString()}`, {
+    const res = await fetchWithRetry(`/api/stream?${qs.toString()}`, {
       headers: getPwRequestHeaders(),
     });
     const json = await res.json().catch(() => ({}));
@@ -947,7 +968,7 @@ export async function fetchKhazanaOverview(programId: string): Promise<{
     return khazanaOverviewCache.get(programId);
   }
   const qs = new URLSearchParams({ programId });
-  const res = await fetch(`/api/khazana/overview?${qs.toString()}`, {
+  const res = await fetchWithRetry(`/api/khazana/overview?${qs.toString()}`, {
     headers: getPwRequestHeaders(),
   });
   const json = await safeReadJson<any>(res, 'Failed to load Khazana overview');

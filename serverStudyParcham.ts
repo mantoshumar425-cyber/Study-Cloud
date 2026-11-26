@@ -1,4 +1,11 @@
 import crypto from 'crypto';
+import {
+  isCircuitOpen,
+  readVaultJson,
+  recordUpstreamFailure,
+  recordUpstreamSuccess,
+  writeVaultJson,
+} from './serverVault.ts';
 
 export const STUDYPARCHAM_PW_API = 'https://pw.studyparcham.in/api/data';
 export const STUDYPARCHAM_PI_API = 'https://pi.studyparcham.site/api/data';
@@ -14,6 +21,7 @@ export interface StudyParchamResult<T = any> {
   data: T | null;
   raw: any;
   errorText: string;
+  fromVault?: boolean;
 }
 
 const batchDetailsCache = new Map<string, { details: any; savedAt: number }>();
@@ -90,19 +98,39 @@ export async function resolveStudyParchamVideoStream(params: {
     return { ok: false, url: '', signedQuery: '' };
   }
 
+  // Return unexpired cached signed URL immediately if available
+  const cacheKey = `sp_stream:${batchId}:${candidateIds[0]}`;
+  const cachedStream = readVaultJson<StudyParchamVideoStreamResult>(cacheKey);
+  if (
+    cachedStream?.data?.ok &&
+    cachedStream.data.url &&
+    cachedStream.data.expiresAt &&
+    Date.now() < cachedStream.data.expiresAt - 15000
+  ) {
+    return cachedStream.data;
+  }
+
+  if (isCircuitOpen('studyparcham_video')) {
+    return { ok: false, url: '', signedQuery: '' };
+  }
+
   let subjectId = 'ABC';
   if (rawSubjectId) {
     subjectId = (await resolveStudyParchamSubjectId(batchId, rawSubjectId)) || rawSubjectId;
   }
 
+  let sawTransportOrBlockedError = false;
+
   for (let pass = 0; pass < 2; pass++) {
     if (pass > 0) {
-      await new Promise((r) => setTimeout(r, 350));
+      if (isCircuitOpen('studyparcham_video')) break;
+      await new Promise((r) => setTimeout(r, 300));
     }
 
-    for (const cid of candidateIds) {
+    const idsForPass = pass === 0 ? candidateIds : candidateIds.slice(0, 1);
+    for (const cid of idsForPass) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 14000);
+      const timer = setTimeout(() => controller.abort(), 7000);
       try {
         const ts = Math.floor(Date.now() / 1000).toString();
         const sig = crypto
@@ -131,8 +159,23 @@ export async function resolveStudyParchamVideoStream(params: {
           },
         });
 
-        const json = (await res.json().catch(() => null)) as any;
-        if (!res.ok || !json) continue;
+        const rawText = await res.text().catch(() => '');
+        if (res.status === 403 && /cloudflare|attention required|just a moment/i.test(rawText)) {
+          recordUpstreamFailure('studyparcham_video', 'Cloudflare 403', true);
+          return { ok: false, url: '', signedQuery: '' };
+        }
+        let json: any = null;
+        try {
+          json = JSON.parse(rawText);
+        } catch {
+          json = null;
+        }
+        if (!res.ok || !json) {
+          if (res.status >= 500 || res.status === 404) {
+            sawTransportOrBlockedError = res.status >= 502;
+          }
+          continue;
+        }
 
         let payload = json;
         if (json.encryptedData) {
@@ -169,7 +212,7 @@ export async function resolveStudyParchamVideoStream(params: {
         }
 
         const drm = d?.drmDetails || {};
-        return {
+        const result: StudyParchamVideoStreamResult = {
           ok: true,
           url: fullUrl,
           signedQuery,
@@ -178,14 +221,20 @@ export async function resolveStudyParchamVideoStream(params: {
           keyValB64: String(d?.key || drm?.key || drm?.keyValue || ''),
           expiresAt,
         };
+        recordUpstreamSuccess('studyparcham_video');
+        writeVaultJson(cacheKey, result);
+        return result;
       } catch {
-        // try next candidate
+        sawTransportOrBlockedError = true;
       } finally {
         clearTimeout(timer);
       }
     }
   }
 
+  if (sawTransportOrBlockedError) {
+    recordUpstreamFailure('studyparcham_video', 'StudyParcham video upstream unavailable');
+  }
   return { ok: false, url: '', signedQuery: '' };
 }
 
@@ -208,7 +257,6 @@ export function applyCachedStudyParchamSig(rawUrl: string): string {
   if (!cfRoot) return rawUrl;
   const cached = cfSigCache.get(cfRoot);
   if (!cached || !cached.signedQuery) return rawUrl;
-  // Use cached signature if unexpired (with 15s safety buffer)
   if (Date.now() < cached.expiresAt - 15000) {
     return attachSigQueryToUrl(rawUrl, cached.signedQuery);
   }
@@ -221,7 +269,6 @@ export async function refreshStudyParchamSigForUrl(rawUrl: string): Promise<stri
   const cached = cfSigCache.get(cfRoot);
   if (!cached) return null;
 
-  // If another concurrent segment already refreshed it recently, reuse immediately
   if (Date.now() < cached.expiresAt - 45000 && cached.signedQuery) {
     return attachSigQueryToUrl(rawUrl, cached.signedQuery);
   }
@@ -237,13 +284,46 @@ export async function refreshStudyParchamSigForUrl(rawUrl: string): Promise<stri
   return null;
 }
 
+function makePwVaultKey(action: string, params: Record<string, any>): string {
+  const ordered = Object.keys(params || {})
+    .sort()
+    .map((k) => `${k}=${String(params[k] ?? '')}`)
+    .join('&');
+  return `sp_pw:${action}:${ordered}`;
+}
+
 export async function callStudyParchamPw<T = any>(
   action: string,
   params: Record<string, any> = {},
   method: 'GET' | 'POST' = 'GET',
   payload: any = null,
-  timeoutMs = 15000
+  timeoutMs = 12000
 ): Promise<StudyParchamResult<T>> {
+  const vaultKey = method === 'GET' ? makePwVaultKey(action, params) : '';
+
+  if (isCircuitOpen('studyparcham_pw')) {
+    if (vaultKey) {
+      const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+      if (snap?.data?.inner !== undefined) {
+        return {
+          ok: true,
+          status: 200,
+          data: snap.data.inner,
+          raw: snap.data.raw,
+          errorText: '',
+          fromVault: true,
+        };
+      }
+    }
+    return {
+      ok: false,
+      status: 503,
+      data: null,
+      raw: null,
+      errorText: 'StudyParcham mirror is temporarily paused (circuit open)',
+    };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -261,6 +341,10 @@ export async function callStudyParchamPw<T = any>(
     });
 
     const text = await res.text().catch(() => '');
+    if (res.status === 403 && /cloudflare|attention required|just a moment/i.test(text)) {
+      recordUpstreamFailure('studyparcham_pw', 'Cloudflare 403', true);
+    }
+
     let json: any = null;
     try {
       json = JSON.parse(text);
@@ -269,6 +353,22 @@ export async function callStudyParchamPw<T = any>(
     }
 
     if (!res.ok || !json || json.success === false) {
+      if (res.status >= 502 || !json) {
+        recordUpstreamFailure('studyparcham_pw', `HTTP ${res.status}`);
+      }
+      if (vaultKey) {
+        const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+        if (snap?.data?.inner !== undefined) {
+          return {
+            ok: true,
+            status: 200,
+            data: snap.data.inner,
+            raw: snap.data.raw,
+            errorText: '',
+            fromVault: true,
+          };
+        }
+      }
       return {
         ok: false,
         status: json?.statusCode || res.status || 502,
@@ -281,9 +381,13 @@ export async function callStudyParchamPw<T = any>(
       };
     }
 
+    recordUpstreamSuccess('studyparcham_pw');
     const inner = json.data !== undefined ? json.data : json;
     if (action === 'pw_btch_dtl' && params?.batchId && inner) {
       batchDetailsCache.set(String(params.batchId), { details: inner, savedAt: Date.now() });
+    }
+    if (vaultKey && inner !== undefined && inner !== null) {
+      writeVaultJson(vaultKey, { inner, raw: json });
     }
 
     return {
@@ -294,6 +398,20 @@ export async function callStudyParchamPw<T = any>(
       errorText: '',
     };
   } catch (err: any) {
+    recordUpstreamFailure('studyparcham_pw', err?.message || 'Network error');
+    if (vaultKey) {
+      const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+      if (snap?.data?.inner !== undefined) {
+        return {
+          ok: true,
+          status: 200,
+          data: snap.data.inner,
+          raw: snap.data.raw,
+          errorText: '',
+          fromVault: true,
+        };
+      }
+    }
     return {
       ok: false,
       status: err?.name === 'AbortError' ? 504 : 502,
@@ -311,8 +429,19 @@ export async function callStudyParchamPi<T = any>(
   params: Record<string, any> = {},
   method: 'GET' | 'POST' = 'GET',
   payload: any = null,
-  timeoutMs = 12000
+  timeoutMs = 10000
 ): Promise<StudyParchamResult<T>> {
+  const vaultKey = method === 'GET' ? `sp_pi:${makePwVaultKey(action, params)}` : '';
+  if (isCircuitOpen('studyparcham_pi')) {
+    if (vaultKey) {
+      const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+      if (snap?.data?.inner !== undefined) {
+        return { ok: true, status: 200, data: snap.data.inner, raw: snap.data.raw, errorText: '', fromVault: true };
+      }
+    }
+    return { ok: false, status: 503, data: null, raw: null, errorText: 'Pi mirror paused' };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -336,6 +465,15 @@ export async function callStudyParchamPi<T = any>(
       json = null;
     }
     if (!res.ok || !json || json.success === false || json.code === 401) {
+      if (res.status >= 502 || !json) {
+        recordUpstreamFailure('studyparcham_pi', `HTTP ${res.status}`);
+      }
+      if (vaultKey) {
+        const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+        if (snap?.data?.inner !== undefined) {
+          return { ok: true, status: 200, data: snap.data.inner, raw: snap.data.raw, errorText: '', fromVault: true };
+        }
+      }
       return {
         ok: false,
         status: json?.httpStatus || json?.statusCode || res.status || 502,
@@ -344,14 +482,26 @@ export async function callStudyParchamPi<T = any>(
         errorText: json?.message || `StudyParcham Pi error (${res.status})`,
       };
     }
+    recordUpstreamSuccess('studyparcham_pi');
+    const inner = (json.data !== undefined ? json.data : json) as T;
+    if (vaultKey && inner !== undefined && inner !== null) {
+      writeVaultJson(vaultKey, { inner, raw: json });
+    }
     return {
       ok: true,
       status: res.status || 200,
-      data: (json.data !== undefined ? json.data : json) as T,
+      data: inner,
       raw: json,
       errorText: '',
     };
   } catch (err: any) {
+    recordUpstreamFailure('studyparcham_pi', err?.message || 'Pi network error');
+    if (vaultKey) {
+      const snap = readVaultJson<{ inner: T; raw: any }>(vaultKey);
+      if (snap?.data?.inner !== undefined) {
+        return { ok: true, status: 200, data: snap.data.inner, raw: snap.data.raw, errorText: '', fromVault: true };
+      }
+    }
     return {
       ok: false,
       status: 502,
@@ -372,9 +522,11 @@ export async function getStudyParchamBatchDetails(batchId: string): Promise<any 
   const res = await callStudyParchamPw('pw_btch_dtl', { batchId });
   if (res.ok && res.data) {
     batchDetailsCache.set(batchId, { details: res.data, savedAt: Date.now() });
+    writeVaultJson(`batch_details:${batchId}`, res.data);
     return res.data;
   }
-  return null;
+  const vault = readVaultJson<any>(`batch_details:${batchId}`);
+  return vault?.data || cached?.details || null;
 }
 
 export async function resolveStudyParchamSubjectId(
@@ -400,5 +552,7 @@ export async function resolveStudyParchamSubjectId(
 export function cacheBatchDetailsForStudyParcham(batchId: string, details: any): void {
   if (batchId && details) {
     batchDetailsCache.set(batchId, { details, savedAt: Date.now() });
+    writeVaultJson(`batch_details:${batchId}`, details);
   }
 }
+

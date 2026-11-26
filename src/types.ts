@@ -360,7 +360,6 @@ export type NavTab =
   | 'community'
   | 'test'
   | 'search'
-  | 'ai'
   | 'downloads'
   | 'favorites'
   | 'history'

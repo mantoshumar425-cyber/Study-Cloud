@@ -25,9 +25,24 @@ body {
   );
   color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  line-height: 1.55;
   min-height: 100vh;
   transition: background-color 0.25s ease, color 0.25s ease;
   overflow-x: hidden;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: 'Sora', 'Plus Jakarta Sans', system-ui, sans-serif;
+  letter-spacing: -0.022em;
+  line-height: 1.24;
+}
+
+.font-mono, code, pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* Themes */

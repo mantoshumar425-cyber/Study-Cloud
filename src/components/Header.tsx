@@ -48,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'khazana', label: 'Khazana' },
     { id: 'pi', label: 'Pi' },
     { id: 'test', label: 'Test' },
-    { id: 'ai', label: 'AI' },
+    { id: 'community', label: 'Community' },
   ];
 
   return (
@@ -93,14 +93,14 @@ export const Header: React.FC<HeaderProps> = ({
                 className="h-full w-full object-cover scale-[1.04]"
               />
             </div>
-            <span className="font-['Sora'] text-base font-extrabold tracking-tight text-[var(--text-primary)] whitespace-nowrap">
+            <span className="font-['Sora'] text-base font-extrabold tracking-[-0.02em] text-[var(--text-primary)] whitespace-nowrap">
               Study Cloud
             </span>
           </button>
         </div>
 
         {/* Zone 2: Clean Typography Quick Links */}
-        <nav className="hidden md:flex items-center gap-5 text-sm font-bold">
+        <nav className="hidden md:flex items-center gap-6 text-[13.5px] font-bold tracking-[-0.01em]">
           {quickNavLinks.map((item) => {
             const isActive = currentTab === item.id;
             return (
@@ -110,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => onTabChange(item.id)}
                 className={`whitespace-nowrap shrink-0 py-1.5 transition-colors border-b-2 ${
                   isActive
-                    ? 'border-[var(--primary-color)] text-[var(--primary-color)]'
+                    ? 'border-[var(--primary-color)] text-[var(--primary-color)] font-extrabold'
                     : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >

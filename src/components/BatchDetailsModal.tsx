@@ -28,7 +28,6 @@ import {
   Check,
   Radio,
   Eye,
-  Sparkles,
 } from 'lucide-react';
 import {
   AdventureState,
@@ -52,7 +51,7 @@ import {
   resolveAttachmentUrl,
 } from '../services/batchService';
 import { getAdventureMetrics, isLectureCompleted } from '../services/adventureService';
-import { StudyAiPanel } from './StudyAiPanel';
+import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 
 export interface PlayLecturePayload {
   batchId: string;
@@ -203,7 +202,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
   const [pdfDownloadError, setPdfDownloadError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
-  const [showAiDrawer, setShowAiDrawer] = useState(false);
 
   // Lock background page scroll while full-screen batch view is open
   useEffect(() => {
@@ -212,11 +210,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     document.body.style.overflow = 'hidden';
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showAiDrawer) {
-          setShowAiDrawer(false);
-        } else {
-          onClose();
-        }
+        onClose();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -224,7 +218,7 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [batch, onClose, showAiDrawer]);
+  }, [batch, onClose]);
 
   // Load batch details & Today's Schedule when batch changes
   useEffect(() => {
@@ -243,7 +237,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
     setWeeklyRoutine([]);
     setScheduleNoticeMsg(null);
     setPdfDownloadError(null);
-    setShowAiDrawer(false);
 
     setLoadingDetails(true);
     setDetailsError(null);
@@ -701,6 +694,35 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
                   <span>{isCleared ? 'Cleared' : 'Complete'}</span>
                 </button>
                 <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!selectedSubject || !selectedTopic) return;
+                    const urlType = (vid.urlType || '').toLowerCase();
+                    const isYt = urlType === 'youtube';
+                    const rawUrl = vid.videoDetails?.embedCode || vid.videoDetails?.videoUrl || vid.url || '';
+                    openLectureDownloadModal({
+                      batchId: batch.batch_id,
+                      subjectId: selectedSubject.slug || selectedSubject._id,
+                      topicId: selectedTopic._id,
+                      videoId: vid._id,
+                      findKey: vid.videoDetails?.findKey,
+                      videoDetailsId: vid.videoDetails?.id || vid.videoDetails?._id,
+                      typeId: vid.typeId,
+                      title,
+                      videoImg: thumb || '',
+                      videoType: isYt ? 'youtube' : 'new',
+                      playType: isDpp ? 'solutions' : 'Lecture',
+                      rawVideoUrl: rawUrl,
+                    });
+                  }}
+                  className="flex h-10 w-10 sm:w-auto sm:px-3.5 items-center justify-center gap-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--bg-tertiary)] text-xs font-bold text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 transition"
+                  title="Download Lecture (MP4 / Audio)"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden lg:inline">Download</span>
+                </button>
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
                     triggerPlayVideo(vid, isDpp);
@@ -825,15 +847,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
               </button>
             </>
           )}
-
-          <button
-            onClick={() => setShowAiDrawer(true)}
-            className="flex h-10 items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3 sm:px-4 text-xs sm:text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
-            title="Ask Study AI about this batch, subject, or chapter"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>Ask AI</span>
-          </button>
 
           <button
             onClick={onClose}
@@ -1643,24 +1656,6 @@ export const BatchDetailsModal: React.FC<BatchDetailsModalProps> = ({
           )}
         </div>
       </div>
-
-      {/* Context-Aware Study AI Slide-Over Drawer */}
-      {showAiDrawer && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
-          <div className="h-full w-full max-w-lg border-l border-[var(--card-border)] shadow-2xl">
-            <StudyAiPanel
-              variant="drawer"
-              scopeKey={`batch:${batch.batch_id}`}
-              context={{
-                batchName: batch.name,
-                subjectName: selectedSubject?.subject,
-                topicName: selectedTopic?.name,
-              }}
-              onClose={() => setShowAiDrawer(false)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };

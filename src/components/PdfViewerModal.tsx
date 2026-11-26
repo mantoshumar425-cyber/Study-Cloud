@@ -51,21 +51,44 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({
         if (cancelled) return;
 
         const baseViewport = page.getViewport({ scale: 1 });
-        const maxReadableWidth = Math.max(280, Math.min(containerWidth - 24, 960));
+        const maxReadableWidth = Math.max(300, Math.min(containerWidth - 20, 1080));
         const fitScale = (maxReadableWidth / baseViewport.width) * scale;
-        const outputScale = Math.min(window.devicePixelRatio || 1, 2.25);
+
+        // Oversample desktop (1x DPR) and retina displays for crisp vector/handwritten HD text
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        const desiredOutputScale = Math.min(4, Math.max(2.75, dpr * 2.25));
 
         const viewport = page.getViewport({ scale: fitScale });
         const canvas = canvasRef.current;
         if (!canvas || cancelled) return;
+
+        // Guard against browser max canvas memory/dimension limits (~4096px / ~14MP)
+        const maxDim = 4096;
+        const maxPixels = 14_000_000;
+        let outputScale = desiredOutputScale;
+        if (viewport.width * outputScale > maxDim || viewport.height * outputScale > maxDim) {
+          outputScale = Math.min(outputScale, maxDim / Math.max(viewport.width, viewport.height));
+        }
+        if (viewport.width * viewport.height * outputScale * outputScale > maxPixels) {
+          outputScale = Math.min(
+            outputScale,
+            Math.sqrt(maxPixels / Math.max(1, viewport.width * viewport.height))
+          );
+        }
+        outputScale = Math.max(1.5, outputScale);
 
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) return;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         const transform =
           outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
@@ -258,12 +281,17 @@ export const PdfViewerModal: React.FC = () => {
             <h3 className="font-['Sora'] text-xs sm:text-sm font-bold text-white truncate">
               {title}
             </h3>
-            <p className="font-mono text-[11px] text-slate-400">
-              {loading
-                ? 'Opening inline PDF reader...'
-                : numPages > 0
-                ? `${numPages} ${numPages === 1 ? 'Page' : 'Pages'} · Inline Viewer`
-                : 'PDF Preview'}
+            <p className="font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
+              <span>
+                {loading
+                  ? 'Opening HD inline PDF reader...'
+                  : numPages > 0
+                  ? `${numPages} ${numPages === 1 ? 'Page' : 'Pages'} · Inline Viewer`
+                  : 'PDF Preview'}
+              </span>
+              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wider text-emerald-300">
+                HD
+              </span>
             </p>
           </div>
         </div>
@@ -289,7 +317,7 @@ export const PdfViewerModal: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
+              onClick={() => setZoom((z) => Math.min(3, Number((z + 0.2).toFixed(2))))}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition"
               title="Zoom In"
             >
@@ -362,7 +390,7 @@ export const PdfViewerModal: React.FC = () => {
           </span>
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
+            onClick={() => setZoom((z) => Math.min(3, Number((z + 0.2).toFixed(2))))}
             className="rounded-lg bg-white/10 p-1.5 text-slate-200"
             aria-label="Zoom In"
           >

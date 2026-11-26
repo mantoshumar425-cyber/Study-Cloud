@@ -8,7 +8,6 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
-  Sparkles,
   ThumbsUp,
   Users,
 } from 'lucide-react';
@@ -35,13 +34,11 @@ interface BatchLoungePost {
 interface BatchCommunityPanelProps {
   batch: BatchItem;
   announcements: any[];
-  onAskAi: (prompt: string) => void;
 }
 
 export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
   batch,
   announcements,
-  onAskAi,
 }) => {
   const storageKey = `studycloud_batch_community_${batch.batch_id}`;
 
@@ -297,19 +294,6 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
                         Batch Community Update
                       </span>
                     )}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onAskAi(
-                          `Summarize key dates, instructions & action items from this ${batch.name} batch notice:\n${notice.text}`
-                        )
-                      }
-                      className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Ask Study AI</span>
-                    </button>
                   </div>
                 </div>
               ))}
@@ -417,16 +401,6 @@ export const BatchCommunityPanel: React.FC<BatchCommunityPanelProps> = ({
                         <span>Reply ({post.replies.length})</span>
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onAskAi(`Help with this ${batch.name} student doubt:\n${post.content}`)
-                      }
-                      className="flex items-center gap-1 text-xs font-bold text-[var(--primary-color)] hover:underline"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Solve with Study AI</span>
-                    </button>
                   </div>
 
                   {post.replies.length > 0 && (

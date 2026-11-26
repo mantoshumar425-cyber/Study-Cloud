@@ -42,6 +42,7 @@ import {
 } from '../services/adventureService';
 import { StudyAiPanel } from './StudyAiPanel';
 import { getOfflineLectureRecord } from '../services/offlineLectureDb';
+import { openLectureDownloadModal } from '../services/lectureDownloadManager';
 
 export interface ActiveLectureInput {
   batchId: string;
@@ -80,6 +81,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const seekFeedbackTimerRef = useRef<number | null>(null);
   const offlineBlobUrlRef = useRef<string | null>(null);
 
   // Stream resolution state
@@ -92,9 +94,12 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [bufferedPercent, setBufferedPercent] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
+  const [seekToast, setSeekToast] = useState<string | null>(null);
+  const [hoverTime, setHoverTime] = useState<{ ratio: number; time: number } | null>(null);
 
   // Fullscreen, Landscape & Scaling state
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -134,7 +139,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         document.fullscreenElement || (document as any).webkitFullscreenElement
       );
       if (!nativeFs) {
-        // Keep fullscreen only if forced CSS landscape is manually active
         setIsFullscreen((prev) => (forceCssLandscape ? prev : false));
         try {
           (screen.orientation as any)?.unlock?.();
@@ -163,6 +167,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         URL.revokeObjectURL(offlineBlobUrlRef.current);
         offlineBlobUrlRef.current = null;
       }
+      if (seekFeedbackTimerRef.current) {
+        window.clearTimeout(seekFeedbackTimerRef.current);
+      }
       try {
         (screen.orientation as any)?.unlock?.();
       } catch {
@@ -177,20 +184,38 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const isCssRotatedLandscape = (isFullscreen || forceCssLandscape) && isPortraitViewport;
   const isImmersiveFullscreen = isFullscreen || forceCssLandscape;
 
-  // Auto-hide controls smoothly in immersive fullscreen while playing
+  // Netflix-style auto-hide overlay controls smoothly while playing (in both normal & fullscreen)
   const scheduleAutoHide = useCallback(() => {
     if (hideTimerRef.current) {
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-    if (!isImmersiveFullscreen || !isPlaying || showSpeedMenu || showQualityMenu || showSleepMenu || showNotesDrawer || showAiDrawer) {
+    if (
+      !isPlaying ||
+      resolving ||
+      Boolean(resolveError) ||
+      showSpeedMenu ||
+      showQualityMenu ||
+      showSleepMenu ||
+      showNotesDrawer ||
+      showAiDrawer
+    ) {
       setControlsVisible(true);
       return;
     }
     hideTimerRef.current = window.setTimeout(() => {
       setControlsVisible(false);
     }, 3200);
-  }, [isImmersiveFullscreen, isPlaying, showSpeedMenu, showQualityMenu, showSleepMenu, showNotesDrawer, showAiDrawer]);
+  }, [
+    isPlaying,
+    resolving,
+    resolveError,
+    showSpeedMenu,
+    showQualityMenu,
+    showSleepMenu,
+    showNotesDrawer,
+    showAiDrawer,
+  ]);
 
   useEffect(() => {
     scheduleAutoHide();
@@ -199,15 +224,20 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     };
   }, [scheduleAutoHide]);
 
-  const revealControls = () => {
+  const revealControls = useCallback(() => {
     setControlsVisible(true);
     scheduleAutoHide();
-  };
+  }, [scheduleAutoHide]);
 
   // 1. Resolve real stream (or load offline saved Blob) on mount & record daily streak activity
   const loadStream = async () => {
     setResolving(true);
     setResolveError(null);
+    setIsBuffering(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setBufferedPercent(0);
     try {
       if (lecture.offlineId) {
         const rec = await getOfflineLectureRecord(lecture.offlineId);
@@ -272,23 +302,51 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
 
     const src = streamData.streamUrl;
 
+    const safeAttemptPlay = () => {
+      videoEl
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(() => {
+          // Browser blocked unmuted autoplay — leave paused cleanly with prominent Netflix Play button
+          setIsPlaying(false);
+          setControlsVisible(true);
+        });
+    };
+
     if (streamData.isDirectMp4) {
       videoEl.src = src;
-      videoEl.play().catch(() => {});
+      if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
+        const onMeta = () => {
+          if (videoEl.duration && lecture.resumeSeconds && lecture.resumeSeconds < videoEl.duration - 5) {
+            videoEl.currentTime = lecture.resumeSeconds;
+          }
+          videoEl.removeEventListener('loadedmetadata', onMeta);
+        };
+        videoEl.addEventListener('loadedmetadata', onMeta);
+      }
+      safeAttemptPlay();
       return;
     }
 
     if (Hls.isSupported()) {
+      let networkRetries = 0;
+      let mediaRetries = 0;
+
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 60,
+        maxBufferLength: 45,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
       hls.attachMedia(videoEl);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        networkRetries = 0;
+        mediaRetries = 0;
         const levels = (data.levels || []).map((lvl, idx) => ({
           index: idx,
           label: lvl.height ? `${lvl.height}p` : `Level ${idx + 1}`,
@@ -298,28 +356,34 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
           videoEl.currentTime = lecture.resumeSeconds;
         }
-        videoEl.play().catch(() => {});
+        safeAttemptPlay();
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            hls.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls.recoverMediaError();
-          } else {
-            setResolveError('Stream playback encountered an error. Tap Retry.');
-          }
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 3) {
+          networkRetries++;
+          setTimeout(() => {
+            if (hlsRef.current === hls) hls.startLoad();
+          }, 500 * networkRetries);
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2) {
+          mediaRetries++;
+          hls.recoverMediaError();
+        } else {
+          setIsBuffering(false);
+          setResolveError('Stream connection failed or expired. Tap Retry Stream to reload.');
         }
       });
     } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
       videoEl.src = src;
-      videoEl.addEventListener('loadedmetadata', () => {
+      const onLoaded = () => {
         if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
           videoEl.currentTime = lecture.resumeSeconds;
         }
-        videoEl.play().catch(() => {});
-      });
+        safeAttemptPlay();
+        videoEl.removeEventListener('loadedmetadata', onLoaded);
+      };
+      videoEl.addEventListener('loadedmetadata', onLoaded);
     } else {
       setResolveError('HLS video playback is not supported in this browser.');
     }
@@ -387,23 +451,38 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   }, [isMuted]);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
-      vid.play().catch(() => {});
+      vid
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          setIsPlaying(false);
+          setControlsVisible(true);
+        });
     } else {
       vid.pause();
+      setIsPlaying(false);
     }
     revealControls();
-  };
+  }, [revealControls]);
 
-  const seekBy = (delta: number) => {
-    const vid = videoRef.current;
-    if (!vid) return;
-    vid.currentTime = Math.max(0, Math.min(vid.duration || 0, vid.currentTime + delta));
-    revealControls();
-  };
+  const seekBy = useCallback(
+    (delta: number) => {
+      const vid = videoRef.current;
+      if (!vid) return;
+      const next = Math.max(0, Math.min(vid.duration || 0, vid.currentTime + delta));
+      vid.currentTime = next;
+      setCurrentTime(next);
+      setSeekToast(delta > 0 ? `+${delta}s` : `${delta}s`);
+      if (seekFeedbackTimerRef.current) window.clearTimeout(seekFeedbackTimerRef.current);
+      seekFeedbackTimerRef.current = window.setTimeout(() => setSeekToast(null), 650);
+      revealControls();
+    },
+    [revealControls]
+  );
 
   const handleQualityChange = (lvlIndex: number) => {
     setCurrentLevel(lvlIndex);
@@ -440,12 +519,12 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         await el.webkitRequestFullscreen();
       }
     } catch {
-      // Native fullscreen can be blocked inside some webviews/iOS — CSS landscape fallback still works!
+      // CSS landscape fallback works automatically
     }
     try {
       await (screen.orientation as any)?.lock?.('landscape');
     } catch {
-      // If orientation.lock is unsupported, CSS rotate handles portrait viewports automatically
+      // CSS rotate handles portrait viewports
     }
   };
 
@@ -470,13 +549,13 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   };
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (isImmersiveFullscreen) {
       exitLandscapeFullscreen();
     } else {
       enterLandscapeFullscreen();
     }
-  };
+  }, [isImmersiveFullscreen]);
 
   const toggleLandscapeRotate = async () => {
     if (forceCssLandscape) {
@@ -492,6 +571,32 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
     }
   };
 
+  // Keyboard shortcuts (Space/K play-pause, J/Left -10s, L/Right +10s, M mute, F fullscreen)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === ' ' || e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        togglePlayPause();
+      } else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        seekBy(-10);
+      } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        seekBy(10);
+      } else if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setIsMuted((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [togglePlayPause, seekBy, toggleFullscreen]);
+
   const formatTime = (secs: number) => {
     if (!secs || !isFinite(secs)) return '0:00';
     const h = Math.floor(secs / 3600);
@@ -504,6 +609,8 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   const attachments = streamData?.attachments || [];
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+  const isHudVisible = controlsVisible || !isPlaying || showSpeedMenu || showQualityMenu || showSleepMenu;
 
   return (
     <div
@@ -520,231 +627,240 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             }
           : undefined
       }
-      className={`fixed z-50 flex flex-col bg-[#050508] text-white overflow-hidden select-none ${
+      className={`fixed z-50 flex flex-col bg-black text-white overflow-hidden select-none ${
         isCssRotatedLandscape ? 'origin-center' : 'inset-0 h-[100dvh] w-full'
       }`}
     >
-      {/* Top Bar (Floating overlay in Fullscreen, solid top bar in normal mode) */}
-      <div
-        className={`${
-          isImmersiveFullscreen
-            ? `absolute top-0 left-0 right-0 z-20 transition-all duration-300 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${
-                controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'
-              }`
-            : 'relative shrink-0 border-b border-white/10 bg-black/90'
-        } flex h-14 sm:h-16 items-center justify-between px-3 sm:px-6 backdrop-blur-sm`}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={() => {
-              if (isImmersiveFullscreen) {
-                exitLandscapeFullscreen();
-              } else {
-                onBack();
-              }
-            }}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 active:scale-95 transition"
-            title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Back'}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex flex-col min-w-0">
-            <h2 className="font-['Sora'] text-sm sm:text-base font-bold text-white truncate">
-              {lecture.title}
-            </h2>
-            <span className="text-[11px] sm:text-xs text-slate-300 truncate">
-              {lecture.batchName || 'VidCloud HD Stream'}
-              {lecture.subjectName ? ` • ${lecture.subjectName}` : ''}
-            </span>
-          </div>
-        </div>
-
-        {/* Top Right Tools */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <button
-            onClick={() => {
-              setShowAiDrawer((prev) => !prev);
-              setShowNotesDrawer(false);
-              revealControls();
-            }}
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold transition whitespace-nowrap ${
-              showAiDrawer
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-                : 'bg-white/15 text-indigo-200 hover:bg-white/25'
-            }`}
-            title="Ask Study AI about this lecture"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span className="hidden xs:inline">Ask AI</span>
-          </button>
-
-          <button
-            onClick={() => {
-              const nextState = toggleLectureCompleted({
-                batchId: lecture.batchId,
-                subjectId: lecture.subjectId,
-                topicId: lecture.topicId,
-                videoId: lecture.videoId,
-                title: lecture.title,
-              });
-              setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId, nextState));
-              onAdventureUpdate?.();
-            }}
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition whitespace-nowrap ${
-              completed
-                ? 'bg-emerald-600 text-white'
-                : 'bg-white/15 text-slate-200 hover:bg-white/25'
-            }`}
-            title={completed ? 'Stage Completed (+50 XP)' : 'Mark Lecture Complete (+50 XP)'}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            <span className="hidden md:inline">{completed ? 'Cleared (+50 XP)' : 'Complete'}</span>
-          </button>
-
-          {!streamData?.isYoutube && (
-            <button
-              onClick={() => setIsAudioOnly(!isAudioOnly)}
-              className={`hidden sm:flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${
-                isAudioOnly
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'bg-white/15 text-slate-200 hover:bg-white/25'
-              }`}
-              title="Audio-Only Mode (Saves Battery & Data)"
-            >
-              <Headphones className="h-4 w-4" />
-              <span className="hidden lg:inline">Audio</span>
-            </button>
-          )}
-
-          {/* Sleep Timer */}
-          <div className="relative hidden sm:block">
-            <button
-              onClick={() => setShowSleepMenu(!showSleepMenu)}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
-                sleepTimerMinutes
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-white/15 text-slate-200 hover:bg-white/25'
-              }`}
-              title="Sleep Timer"
-            >
-              <Moon className="h-4 w-4" />
-            </button>
-            {showSleepMenu && (
-              <div className="absolute right-0 top-12 z-50 w-44 rounded-xl border border-white/15 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-lg text-xs">
-                <div className="px-2 py-1 font-bold text-slate-400">Sleep Timer</div>
-                {[15, 30, 45, 60].map((mins) => (
-                  <button
-                    key={mins}
-                    onClick={() => {
-                      setSleepTimerMinutes(mins);
-                      setShowSleepMenu(false);
-                    }}
-                    className={`w-full rounded-lg px-2.5 py-2 text-left font-medium transition ${
-                      sleepTimerMinutes === mins
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-200 hover:bg-white/10'
-                    }`}
-                  >
-                    {mins} minutes
-                  </button>
-                ))}
-                {sleepTimerMinutes !== null && (
-                  <button
-                    onClick={() => {
-                      setSleepTimerMinutes(null);
-                      setShowSleepMenu(false);
-                    }}
-                    className="mt-1 w-full rounded-lg px-2.5 py-2 text-left text-red-400 hover:bg-red-500/10"
-                  >
-                    Turn off timer
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {!streamData?.isYoutube && (
-            <button
-              onClick={togglePiP}
-              className="hidden md:flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-slate-200 hover:bg-white/25 transition"
-              title="Picture in Picture"
-            >
-              <PictureInPicture2 className="h-4 w-4" />
-            </button>
-          )}
-
-          {/* Rotate / Landscape Toggle */}
-          <button
-            onClick={toggleLandscapeRotate}
-            className={`flex h-10 items-center gap-1.5 rounded-xl px-2.5 sm:px-3 text-xs font-bold transition ${
-              forceCssLandscape
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white/15 text-white hover:bg-white/25'
-            }`}
-            title="Rotate Video to Landscape Fullscreen"
-          >
-            <Smartphone className="h-4 w-4 -rotate-90" />
-            <span className="hidden lg:inline">{forceCssLandscape ? 'Landscape' : 'Rotate'}</span>
-          </button>
-
-          {/* True Edge-to-Edge Fullscreen Button */}
-          <button
-            onClick={toggleFullscreen}
-            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
-              isImmersiveFullscreen
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white/15 text-white hover:bg-white/25'
-            }`}
-            title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Fullscreen Landscape'}
-          >
-            {isImmersiveFullscreen ? (
-              <Minimize2 className="h-5 w-5" />
-            ) : (
-              <Maximize2 className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Viewport */}
+      {/* Netflix-Style Full-Bleed Cinema Viewport */}
       <div
         onClick={() => {
-          if (isImmersiveFullscreen) {
-            setControlsVisible((prev) => {
-              const next = !prev;
-              if (next) scheduleAutoHide();
-              return next;
-            });
-          } else {
-            togglePlayPause();
-          }
+          if (streamData?.isYoutube || resolving || resolveError) return;
+          setControlsVisible((prev) => {
+            const next = !prev;
+            if (next) scheduleAutoHide();
+            return next;
+          });
         }}
         className="relative flex flex-1 items-center justify-center bg-black overflow-hidden"
       >
+        {/* Top Netflix Gradient Scrim Bar */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`absolute top-0 left-0 right-0 z-20 flex h-16 sm:h-20 items-center justify-between gap-3 px-3 sm:px-6 bg-gradient-to-b from-black/95 via-black/60 to-transparent transition-all duration-300 ${
+            isHudVisible || resolving || resolveError || streamData?.isYoutube
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 -translate-y-4 pointer-events-none'
+          }`}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => {
+                if (isImmersiveFullscreen) {
+                  exitLandscapeFullscreen();
+                } else {
+                  onBack();
+                }
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/45 text-white border border-white/15 hover:bg-white/20 active:scale-95 transition backdrop-blur-md"
+              title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Back'}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="hidden sm:inline-flex shrink-0 items-center rounded bg-[#E50914] px-1.5 py-0.5 font-['Sora'] text-[10px] font-black uppercase tracking-wider text-white">
+                  {lecture.offlineId ? 'Offline' : 'HD'}
+                </span>
+                <h2 className="font-['Sora'] text-sm sm:text-base font-bold tracking-tight text-white truncate">
+                  {lecture.title}
+                </h2>
+              </div>
+              <span className="text-[11px] sm:text-xs font-medium text-neutral-300/90 truncate">
+                {lecture.batchName || 'VidCloud Stream'}
+                {lecture.subjectName ? ` • ${lecture.subjectName}` : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Top Right Netflix Tools (AI ONLY here during lecture!) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              onClick={() => {
+                setShowAiDrawer((prev) => !prev);
+                setShowNotesDrawer(false);
+                revealControls();
+              }}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs sm:text-sm font-bold transition whitespace-nowrap backdrop-blur-md border ${
+                showAiDrawer
+                  ? 'bg-[#E50914] border-[#E50914] text-white shadow-[0_0_20px_rgba(229,9,20,0.45)]'
+                  : 'bg-black/50 border-white/20 text-white hover:bg-white/20'
+              }`}
+              title="Ask Study AI about this lecture"
+            >
+              <Sparkles className="h-4 w-4 text-amber-300" />
+              <span>Ask AI</span>
+            </button>
+
+            {!lecture.offlineId && !streamData?.isYoutube && (
+              <button
+                onClick={() => {
+                  openLectureDownloadModal({
+                    batchId: lecture.batchId,
+                    programId: lecture.programId,
+                    subjectId: lecture.subjectId,
+                    topicId: lecture.topicId,
+                    videoId: lecture.videoId,
+                    findKey: lecture.findKey,
+                    videoDetailsId: lecture.videoDetailsId,
+                    typeId: lecture.typeId,
+                    title: lecture.title,
+                    videoImg: lecture.videoImg,
+                    videoType: lecture.videoType || 'new',
+                    playType: lecture.playType || 'Lecture',
+                    rawVideoUrl: lecture.rawVideoUrl,
+                    resolvedStream: streamData,
+                  });
+                }}
+                className="flex h-10 items-center gap-1.5 rounded-full bg-black/50 border border-white/20 px-3 text-xs font-bold text-emerald-300 hover:bg-white/20 transition backdrop-blur-md"
+                title="Download Lecture (MP4 / Audio)"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden md:inline">Download</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const nextState = toggleLectureCompleted({
+                  batchId: lecture.batchId,
+                  subjectId: lecture.subjectId,
+                  topicId: lecture.topicId,
+                  videoId: lecture.videoId,
+                  title: lecture.title,
+                });
+                setCompleted(isLectureCompleted(lecture.batchId, lecture.videoId, nextState));
+                onAdventureUpdate?.();
+              }}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition whitespace-nowrap backdrop-blur-md border ${
+                completed
+                  ? 'bg-emerald-600/90 border-emerald-400/50 text-white'
+                  : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
+              }`}
+              title={completed ? 'Stage Completed (+50 XP)' : 'Mark Lecture Complete (+50 XP)'}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="hidden lg:inline">{completed ? 'Cleared' : 'Complete'}</span>
+            </button>
+
+            {!streamData?.isYoutube && (
+              <button
+                onClick={() => setIsAudioOnly(!isAudioOnly)}
+                className={`hidden sm:flex h-10 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition backdrop-blur-md border ${
+                  isAudioOnly
+                    ? 'bg-emerald-600 border-emerald-400 text-white'
+                    : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
+                }`}
+                title="Audio-Only Mode"
+              >
+                <Headphones className="h-4 w-4" />
+              </button>
+            )}
+
+            {/* Sleep Timer */}
+            <div className="relative hidden sm:block">
+              <button
+                onClick={() => setShowSleepMenu(!showSleepMenu)}
+                className={`flex h-10 w-10 items-center justify-center rounded-full border transition backdrop-blur-md ${
+                  sleepTimerMinutes
+                    ? 'bg-[#E50914] border-[#E50914] text-white'
+                    : 'bg-black/50 border-white/20 text-neutral-200 hover:bg-white/20'
+                }`}
+                title="Sleep Timer"
+              >
+                <Moon className="h-4 w-4" />
+              </button>
+              {showSleepMenu && (
+                <div className="absolute right-0 top-12 z-50 w-44 rounded-xl border border-white/15 bg-neutral-950/95 p-2 shadow-2xl backdrop-blur-lg text-xs">
+                  <div className="px-2 py-1 font-bold text-neutral-400">Sleep Timer</div>
+                  {[15, 30, 45, 60].map((mins) => (
+                    <button
+                      key={mins}
+                      onClick={() => {
+                        setSleepTimerMinutes(mins);
+                        setShowSleepMenu(false);
+                      }}
+                      className={`w-full rounded-lg px-2.5 py-2 text-left font-medium transition ${
+                        sleepTimerMinutes === mins
+                          ? 'bg-[#E50914] text-white'
+                          : 'text-neutral-200 hover:bg-white/10'
+                      }`}
+                    >
+                      {mins} minutes
+                    </button>
+                  ))}
+                  {sleepTimerMinutes !== null && (
+                    <button
+                      onClick={() => {
+                        setSleepTimerMinutes(null);
+                        setShowSleepMenu(false);
+                      }}
+                      className="mt-1 w-full rounded-lg px-2.5 py-2 text-left text-red-400 hover:bg-red-500/10"
+                    >
+                      Turn off timer
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!streamData?.isYoutube && (
+              <button
+                onClick={togglePiP}
+                className="hidden md:flex h-10 w-10 items-center justify-center rounded-full bg-black/50 border border-white/20 text-neutral-200 hover:bg-white/20 transition backdrop-blur-md"
+                title="Picture in Picture"
+              >
+                <PictureInPicture2 className="h-4 w-4" />
+              </button>
+            )}
+
+            <button
+              onClick={toggleLandscapeRotate}
+              className={`flex h-10 w-10 items-center justify-center rounded-full border transition backdrop-blur-md ${
+                forceCssLandscape
+                  ? 'bg-[#E50914] border-[#E50914] text-white'
+                  : 'bg-black/50 border-white/20 text-white hover:bg-white/20'
+              }`}
+              title="Rotate Video to Landscape"
+            >
+              <Smartphone className="h-4 w-4 -rotate-90" />
+            </button>
+          </div>
+        </div>
+
         {resolving ? (
-          <div className="flex flex-col items-center gap-3 text-center p-6">
-            <Loader2 className="h-12 w-12 animate-spin text-indigo-500" />
-            <p className="font-['Sora'] text-base font-bold text-white">
+          <div className="flex flex-col items-center gap-3.5 text-center p-6">
+            <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
+            <p className="font-['Sora'] text-base sm:text-lg font-bold text-white tracking-tight">
               Loading secure lecture stream...
             </p>
-            <p className="text-xs sm:text-sm text-slate-400">
-              Decrypting HD video & preparing adaptive playback
+            <p className="text-xs sm:text-sm text-neutral-400">
+              Preparing adaptive HD video playback
             </p>
           </div>
         ) : resolveError ? (
-          <div className="flex flex-col items-center gap-3 text-center p-6 max-w-md">
-            <AlertTriangle className="h-12 w-12 text-amber-500" />
+          <div className="flex flex-col items-center gap-3.5 text-center p-6 max-w-md">
+            <AlertTriangle className="h-12 w-12 text-[#E50914]" />
             <h3 className="font-['Sora'] text-lg font-bold text-white">
               Could Not Play Video
             </h3>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{resolveError}</p>
-            <div className="flex flex-wrap justify-center gap-2 mt-2">
+            <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed">{resolveError}</p>
+            <div className="flex flex-wrap justify-center gap-2.5 mt-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   loadStream();
                 }}
-                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 transition"
+                className="rounded-md bg-[#E50914] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition shadow-lg"
               >
                 Retry Stream
               </button>
@@ -753,7 +869,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   e.stopPropagation();
                   onBack();
                 }}
-                className="rounded-xl border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition"
+                className="rounded-md border border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white hover:bg-white/20 transition"
               >
                 Go Back
               </button>
@@ -765,7 +881,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             title={lecture.title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            className="h-full w-full border-none"
+            className="h-full w-full border-none pt-16"
           />
         ) : (
           <>
@@ -773,15 +889,38 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
             <video
               ref={videoRef}
               playsInline
-              onPlay={() => setIsPlaying(true)}
+              onPlay={() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              }}
               onPause={() => setIsPlaying(false)}
               onWaiting={() => setIsBuffering(true)}
-              onPlaying={() => setIsBuffering(false)}
+              onPlaying={() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              }}
               onCanPlay={() => setIsBuffering(false)}
+              onError={() => {
+                if (streamData?.isDirectMp4) {
+                  setResolveError('Offline or direct video file could not be played.');
+                }
+              }}
+              onProgress={(e) => {
+                const vid = e.currentTarget;
+                if (vid.duration && vid.buffered.length > 0) {
+                  const end = vid.buffered.end(vid.buffered.length - 1);
+                  setBufferedPercent(Math.min(100, (end / vid.duration) * 100));
+                }
+              }}
               onTimeUpdate={(e) => {
-                const cur = e.currentTarget.currentTime;
-                const dur = e.currentTarget.duration || 0;
+                const vid = e.currentTarget;
+                const cur = vid.currentTime;
+                const dur = vid.duration || 0;
                 setCurrentTime(cur);
+                if (dur > 0 && vid.buffered.length > 0) {
+                  const end = vid.buffered.end(vid.buffered.length - 1);
+                  setBufferedPercent(Math.min(100, (end / dur) * 100));
+                }
                 if (dur > 0 && cur / dur >= 0.8 && !completed) {
                   markLectureCompleted({
                     batchId: lecture.batchId,
@@ -800,70 +939,316 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               } ${isAudioOnly ? 'opacity-0 pointer-events-none absolute inset-0' : ''}`}
             />
 
-            {/* Big Center Quick Controls in Fullscreen when HUD visible */}
-            {isImmersiveFullscreen && controlsVisible && !isAudioOnly && !isBuffering && (
+            {/* Netflix-Style Center Transport Controls (Always shown when paused or HUD visible!) */}
+            {(isHudVisible || !isPlaying) && !isAudioOnly && !isBuffering && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="pointer-events-auto absolute z-10 flex items-center gap-6 sm:gap-10"
+                className="pointer-events-auto absolute z-10 flex items-center gap-7 sm:gap-12 transition-opacity duration-200"
               >
                 <button
                   onClick={() => seekBy(-10)}
-                  className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/15 hover:bg-black/75 active:scale-90 transition"
+                  className="group relative flex h-13 w-13 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/25 hover:bg-white/20 active:scale-90 transition"
                   title="Rewind 10s"
                 >
-                  <RotateCcw className="h-6 w-6" />
+                  <RotateCcw className="h-6 w-6 sm:h-7 sm:w-7" />
+                  <span className="absolute -bottom-5 text-[10px] font-bold text-neutral-300 opacity-0 group-hover:opacity-100 transition">
+                    -10s
+                  </span>
                 </button>
+
                 <button
                   onClick={togglePlayPause}
-                  className="sc-play-hero h-16 w-16 sm:h-20 sm:w-20"
+                  className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-[#E50914] text-white shadow-[0_0_36px_rgba(229,9,20,0.65)] hover:bg-[#f40612] hover:scale-105 active:scale-95 transition"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
-                    <Pause className="h-8 w-8 sm:h-9 sm:w-9" />
+                    <Pause className="h-8 w-8 sm:h-10 sm:w-10 fill-current" />
                   ) : (
-                    <Play className="h-8 w-8 sm:h-9 sm:w-9 fill-current ml-1" />
+                    <Play className="h-8 w-8 sm:h-10 sm:w-10 fill-current ml-1" />
                   )}
                 </button>
+
                 <button
                   onClick={() => seekBy(10)}
-                  className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/15 hover:bg-black/75 active:scale-90 transition"
+                  className="group relative flex h-13 w-13 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md border border-white/25 hover:bg-white/20 active:scale-90 transition"
                   title="Forward 10s"
                 >
-                  <RotateCw className="h-6 w-6" />
+                  <RotateCw className="h-6 w-6 sm:h-7 sm:w-7" />
+                  <span className="absolute -bottom-5 text-[10px] font-bold text-neutral-300 opacity-0 group-hover:opacity-100 transition">
+                    +10s
+                  </span>
                 </button>
+              </div>
+            )}
+
+            {/* Quick Seek Indicator Toast */}
+            {seekToast && (
+              <div className="pointer-events-none absolute top-24 z-20 rounded-full bg-black/80 border border-white/15 px-4 py-1.5 font-mono text-xs sm:text-sm font-bold text-white backdrop-blur-md shadow-xl">
+                {seekToast}
               </div>
             )}
 
             {/* Buffering Spinner */}
             {isBuffering && !isAudioOnly && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
-                <Loader2 className="h-12 w-12 animate-spin text-indigo-400" />
+                <Loader2 className="h-12 w-12 animate-spin text-[#E50914]" />
               </div>
             )}
 
             {/* Audio-Only Overlay */}
             {isAudioOnly && (
               <div className="flex flex-col items-center justify-center p-6 text-center z-10">
-                <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-tr from-emerald-600 to-indigo-600 shadow-2xl shadow-emerald-500/20">
-                  <Headphones className="h-12 w-12 text-white animate-pulse" />
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#E50914]/20 border border-[#E50914]/50 shadow-2xl">
+                  <Headphones className="h-12 w-12 text-[#E50914] animate-pulse" />
                 </div>
                 <h3 className="mt-6 font-['Sora'] text-lg sm:text-xl font-bold text-white max-w-md">
                   {lecture.title}
                 </h3>
                 <p className="mt-1 text-xs sm:text-sm text-emerald-400 font-semibold">
-                  Audio-Only Mode Active • Video Stream Paused Visually
+                  Audio-Only Mode Active • Saving Battery &amp; Data
                 </p>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsAudioOnly(false);
                   }}
-                  className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 transition"
+                  className="mt-5 rounded-md bg-[#E50914] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#f40612] transition"
                 >
                   Turn Video Back On
                 </button>
               </div>
             )}
+
+            {/* Bottom Netflix Control Scrim */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/95 via-black/75 to-transparent px-3 sm:px-6 pb-3.5 sm:pb-5 pt-10 transition-all duration-300 ${
+                isHudVisible
+                  ? 'opacity-100 translate-y-0'
+                  : 'opacity-0 translate-y-4 pointer-events-none'
+              }`}
+            >
+              {/* Netflix Red Scrub Bar */}
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  onMouseMove={(e) => {
+                    if (!duration) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    setHoverTime({ ratio, time: ratio * duration });
+                  }}
+                  onMouseLeave={() => setHoverTime(null)}
+                  onClick={(e) => {
+                    const vid = videoRef.current;
+                    if (!vid || !duration) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    vid.currentTime = ratio * duration;
+                    setCurrentTime(ratio * duration);
+                    revealControls();
+                  }}
+                  className="group relative flex-1 h-1.5 hover:h-2.5 cursor-pointer rounded-full bg-white/25 transition-all"
+                >
+                  {hoverTime && (
+                    <div
+                      className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded bg-neutral-900/95 border border-white/15 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-lg"
+                      style={{ left: `${hoverTime.ratio * 100}%` }}
+                    >
+                      {formatTime(hoverTime.time)}
+                    </div>
+                  )}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-white/35 pointer-events-none"
+                    style={{ width: `${bufferedPercent}%` }}
+                  />
+                  <div
+                    className="relative h-full rounded-full bg-[#E50914]"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 -ml-1.5 rounded-full bg-[#E50914] ring-2 ring-white shadow-md transition-transform group-hover:scale-125"
+                    style={{ left: `${progressPercent}%` }}
+                  />
+                </div>
+                <span className="font-mono text-[11px] sm:text-xs font-semibold tabular-nums text-neutral-200 shrink-0">
+                  {formatTime(currentTime)} <span className="text-neutral-500">/</span> {formatTime(duration)}
+                </span>
+              </div>
+
+              {/* Bottom Controls Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2.5">
+                  <button
+                    onClick={togglePlayPause}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 active:scale-95 transition"
+                    title={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? (
+                      <Pause className="h-5 w-5 fill-current" />
+                    ) : (
+                      <Play className="h-5 w-5 fill-current ml-0.5" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => seekBy(-10)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white active:scale-95 transition"
+                    title="Rewind 10s"
+                  >
+                    <RotateCcw className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={() => seekBy(10)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white active:scale-95 transition"
+                    title="Forward 10s"
+                  >
+                    <RotateCw className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={() => setIsMuted(!isMuted)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-200 hover:bg-white/15 hover:text-white transition"
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                  >
+                    {isMuted ? <VolumeX className="h-5 w-5 text-[#E50914]" /> : <Volume2 className="h-5 w-5" />}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  {/* Fit vs Fill */}
+                  <button
+                    onClick={() => {
+                      setFillMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
+                      revealControls();
+                    }}
+                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                      fillMode === 'cover'
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-neutral-200 hover:bg-white/15'
+                    }`}
+                    title="Toggle Fit / Fill Screen"
+                  >
+                    <Expand className="h-3.5 w-3.5" />
+                    <span className="hidden xs:inline">{fillMode === 'cover' ? 'Fill' : 'Fit'}</span>
+                  </button>
+
+                  {/* Quality Picker */}
+                  {qualityLevels.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setShowQualityMenu(!showQualityMenu);
+                          setShowSpeedMenu(false);
+                          revealControls();
+                        }}
+                        className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-200 hover:bg-white/15 transition"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>
+                          {currentLevel === -1
+                            ? 'Auto'
+                            : qualityLevels.find((q) => q.index === currentLevel)?.label || 'Auto'}
+                        </span>
+                      </button>
+                      {showQualityMenu && (
+                        <div className="absolute right-0 bottom-12 z-50 w-32 rounded-xl border border-white/15 bg-neutral-950/95 p-1.5 shadow-2xl backdrop-blur-lg">
+                          <button
+                            onClick={() => handleQualityChange(-1)}
+                            className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                              currentLevel === -1
+                                ? 'bg-[#E50914] text-white'
+                                : 'text-neutral-200 hover:bg-white/10'
+                            }`}
+                          >
+                            Auto
+                          </button>
+                          {qualityLevels.map((lvl) => (
+                            <button
+                              key={lvl.index}
+                              onClick={() => handleQualityChange(lvl.index)}
+                              className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                                currentLevel === lvl.index
+                                  ? 'bg-[#E50914] text-white'
+                                  : 'text-neutral-200 hover:bg-white/10'
+                              }`}
+                            >
+                              {lvl.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Speed Picker */}
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setShowSpeedMenu(!showSpeedMenu);
+                        setShowQualityMenu(false);
+                        revealControls();
+                      }}
+                      className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-neutral-200 hover:bg-white/15 transition"
+                    >
+                      <Gauge className="h-3.5 w-3.5 text-neutral-300" />
+                      <span>{playbackSpeed}x</span>
+                    </button>
+                    {showSpeedMenu && (
+                      <div className="absolute right-0 bottom-12 z-50 w-28 rounded-xl border border-white/15 bg-neutral-950/95 p-1.5 shadow-2xl backdrop-blur-lg max-h-52 overflow-y-auto">
+                        {speedOptions.map((spd) => (
+                          <button
+                            key={spd}
+                            onClick={() => {
+                              setPlaybackSpeed(spd);
+                              setShowSpeedMenu(false);
+                              revealControls();
+                            }}
+                            className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                              playbackSpeed === spd
+                                ? 'bg-[#E50914] text-white'
+                                : 'text-neutral-200 hover:bg-white/10'
+                            }`}
+                          >
+                            {spd}x
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes Button */}
+                  <button
+                    onClick={() => {
+                      setShowNotesDrawer(!showNotesDrawer);
+                      setShowAiDrawer(false);
+                      revealControls();
+                    }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                      showNotesDrawer
+                        ? 'bg-[#E50914] text-white'
+                        : 'text-neutral-200 hover:bg-white/15'
+                    }`}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="hidden xs:inline">Notes ({attachments.length})</span>
+                  </button>
+
+                  {/* Fullscreen Quick Toggle */}
+                  <button
+                    onClick={toggleFullscreen}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15 transition"
+                    title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Landscape Fullscreen'}
+                  >
+                    {isImmersiveFullscreen ? (
+                      <Minimize2 className="h-5 w-5" />
+                    ) : (
+                      <Maximize2 className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </>
         )}
 
@@ -871,25 +1256,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         {showNotesDrawer && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-white/15 bg-slate-950/95 p-4 backdrop-blur-xl flex flex-col"
+            className="absolute right-0 top-0 bottom-0 z-30 w-full max-w-md border-l border-white/15 bg-neutral-950/95 p-4 backdrop-blur-xl flex flex-col"
           >
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-pink-400" />
+                <FileText className="h-5 w-5 text-[#E50914]" />
                 <h4 className="font-['Sora'] text-sm sm:text-base font-bold text-white">
-                  Lecture Notes & Attachments
+                  Lecture Notes &amp; Attachments
                 </h4>
               </div>
               <button
                 onClick={() => setShowNotesDrawer(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                className="rounded-lg p-1.5 text-neutral-400 hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="mt-3 flex-1 overflow-y-auto space-y-2.5">
               {attachments.length === 0 ? (
-                <p className="text-xs sm:text-sm text-slate-400 py-6 text-center">
+                <p className="text-xs sm:text-sm text-neutral-400 py-6 text-center">
                   No PDF attachments linked directly to this lecture. Check the Chapter Notes tab!
                 </p>
               ) : (
@@ -905,7 +1290,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         <span className="font-semibold text-white truncate pr-2">
                           {fileName}
                         </span>
-                        <span className="text-xs text-slate-400 shrink-0">Unavailable</span>
+                        <span className="text-xs text-neutral-400 shrink-0">Unavailable</span>
                       </div>
                     );
                   }
@@ -914,7 +1299,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   return (
                     <div
                       key={i}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3.5 text-xs sm:text-sm hover:border-indigo-500/50 transition"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3.5 text-xs sm:text-sm hover:border-[#E50914]/50 transition"
                     >
                       <span className="font-semibold text-white truncate pr-2 flex-1">
                         {fileName}
@@ -923,7 +1308,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         <button
                           type="button"
                           onClick={() => openPdfViewer(rawHref, fileName)}
-                          className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/20 transition"
+                          className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-bold text-neutral-200 hover:bg-white/20 transition"
                         >
                           View
                         </button>
@@ -942,7 +1327,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                               setDownloadingAttIdx(null);
                             }
                           }}
-                          className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-60 transition"
+                          className="flex items-center gap-1 rounded-lg bg-[#E50914] px-3 py-2 text-xs font-bold text-white hover:bg-[#f40612] disabled:opacity-60 transition"
                         >
                           {isDownloading ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -962,7 +1347,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
         )}
 
-        {/* In-Player Study AI Doubt Drawer */}
+        {/* In-Player Study AI Doubt Drawer (AI ONLY during lecture) */}
         {showAiDrawer && (
           <div
             onClick={(e) => e.stopPropagation()}
@@ -982,211 +1367,6 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
           </div>
         )}
       </div>
-
-      {/* Bottom Controls Deck (Overlay in Fullscreen, pinned footer in normal view) */}
-      {!streamData?.isYoutube && !resolving && !resolveError && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`${
-            isImmersiveFullscreen
-              ? `absolute bottom-0 left-0 right-0 z-20 transition-all duration-300 bg-gradient-to-t from-black/90 via-black/60 to-transparent ${
-                  controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'
-                }`
-              : 'relative shrink-0 border-t border-white/10 bg-black/95'
-          } p-3 sm:px-6`}
-        >
-          {/* Seek Bar */}
-          <div className="flex items-center gap-3 mb-2.5">
-            <span className="font-mono text-xs sm:text-sm text-slate-200">{formatTime(currentTime)}</span>
-            <div
-              onClick={(e) => {
-                const vid = videoRef.current;
-                if (!vid || !duration) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                vid.currentTime = ratio * duration;
-                revealControls();
-              }}
-              className="group relative flex-1 h-2.5 cursor-pointer rounded-full bg-white/25 transition-all hover:h-3.5"
-            >
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-              />
-              <div
-                className="absolute top-1/2 -translate-y-1/2 h-4 w-4 -ml-2 rounded-full bg-white shadow-md transition group-hover:scale-110"
-                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-              />
-            </div>
-            <span className="font-mono text-xs sm:text-sm text-slate-300">{formatTime(duration)}</span>
-          </div>
-
-          {/* Control Buttons Row */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={togglePlayPause}
-                className="sc-play-btn h-11 w-11 justify-center !p-0"
-              >
-                {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 fill-current ml-0.5" />}
-              </button>
-
-              <button
-                onClick={() => seekBy(-10)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 active:scale-95 transition"
-                title="Rewind 10s"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-
-              <button
-                onClick={() => seekBy(10)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 active:scale-95 transition"
-                title="Forward 10s"
-              >
-                <RotateCw className="h-4 w-4" />
-              </button>
-
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 transition"
-                title={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Fit vs Fill (Zoom edge-to-edge) */}
-              <button
-                onClick={() => {
-                  setFillMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
-                  revealControls();
-                }}
-                className={`flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold transition ${
-                  fillMode === 'cover'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white/15 text-white hover:bg-white/25'
-                }`}
-                title="Toggle Fit / Fill Screen"
-              >
-                <Expand className="h-3.5 w-3.5" />
-                <span className="hidden xs:inline">{fillMode === 'cover' ? 'Fill' : 'Fit'}</span>
-              </button>
-
-              {/* Quality Picker */}
-              {qualityLevels.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => {
-                      setShowQualityMenu(!showQualityMenu);
-                      setShowSpeedMenu(false);
-                      revealControls();
-                    }}
-                    className="flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold text-white hover:bg-white/25 transition"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>
-                      {currentLevel === -1
-                        ? 'Auto'
-                        : qualityLevels.find((q) => q.index === currentLevel)?.label || 'Auto'}
-                    </span>
-                  </button>
-                  {showQualityMenu && (
-                    <div className="absolute right-0 bottom-12 z-50 w-32 rounded-xl border border-white/15 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-lg">
-                      <button
-                        onClick={() => handleQualityChange(-1)}
-                        className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                          currentLevel === -1
-                            ? 'bg-indigo-600 text-white'
-                            : 'text-slate-200 hover:bg-white/10'
-                        }`}
-                      >
-                        Auto
-                      </button>
-                      {qualityLevels.map((lvl) => (
-                        <button
-                          key={lvl.index}
-                          onClick={() => handleQualityChange(lvl.index)}
-                          className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                            currentLevel === lvl.index
-                              ? 'bg-indigo-600 text-white'
-                              : 'text-slate-200 hover:bg-white/10'
-                          }`}
-                        >
-                          {lvl.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Speed Picker */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowSpeedMenu(!showSpeedMenu);
-                    setShowQualityMenu(false);
-                    revealControls();
-                  }}
-                  className="flex items-center gap-1 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold text-white hover:bg-white/25 transition"
-                >
-                  <Gauge className="h-3.5 w-3.5 text-indigo-400" />
-                  <span>{playbackSpeed}x</span>
-                </button>
-                {showSpeedMenu && (
-                  <div className="absolute right-0 bottom-12 z-50 w-28 rounded-xl border border-white/15 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-lg max-h-52 overflow-y-auto">
-                    {speedOptions.map((spd) => (
-                      <button
-                        key={spd}
-                        onClick={() => {
-                          setPlaybackSpeed(spd);
-                          setShowSpeedMenu(false);
-                          revealControls();
-                        }}
-                        className={`w-full rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                          playbackSpeed === spd
-                            ? 'bg-indigo-600 text-white'
-                            : 'text-slate-200 hover:bg-white/10'
-                        }`}
-                      >
-                        {spd}x
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Notes Button */}
-              <button
-                onClick={() => {
-                  setShowNotesDrawer(!showNotesDrawer);
-                  setShowAiDrawer(false);
-                  revealControls();
-                }}
-                className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/15 px-3 py-2 text-xs font-bold text-indigo-200 hover:bg-white/25 transition"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                <span className="hidden xs:inline">Notes ({attachments.length})</span>
-              </button>
-
-              {/* Fullscreen Quick Toggle */}
-              <button
-                onClick={toggleFullscreen}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 transition"
-                title={isImmersiveFullscreen ? 'Exit Fullscreen' : 'Landscape Fullscreen'}
-              >
-                {isImmersiveFullscreen ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

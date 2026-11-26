@@ -121,23 +121,23 @@ export const BatchCard: React.FC<BatchCardProps> = ({
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-4">
-        <h3 className="font-['Sora'] text-sm sm:text-[15px] font-extrabold text-[var(--text-primary)] line-clamp-2 leading-snug group-hover:text-[var(--primary-color)] transition-colors">
+        <h3 className="font-['Sora'] text-[14.5px] sm:text-[15.5px] font-extrabold tracking-[-0.015em] text-[var(--text-primary)] line-clamp-2 leading-[1.35] group-hover:text-[var(--primary-color)] transition-colors">
           {batch.name}
         </h3>
 
         {batch.byName && (
-          <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-1">
+          <p className="mt-1.5 text-[12px] font-medium text-[var(--text-secondary)]/90 line-clamp-1">
             {batch.byName}
           </p>
         )}
 
-        <div className="mt-auto pt-3 flex items-center justify-between border-t border-[var(--card-border)] text-xs text-[var(--text-secondary)]">
+        <div className="mt-auto pt-3 flex items-center justify-between border-t border-[var(--card-border)] text-[11.5px] text-[var(--text-secondary)]">
           <div className="flex items-center gap-1.5">
             <BookOpen className="h-3.5 w-3.5 text-[var(--primary-color)]" />
-            <span className="font-semibold">{batch.isVidyapeeth ? 'Vidyapeeth' : 'Lectures + Notes'}</span>
+            <span className="font-semibold tracking-tight">{batch.isVidyapeeth ? 'Vidyapeeth' : 'Lectures + Notes'}</span>
           </div>
           {batch.amount !== undefined && (
-            <span className="font-extrabold text-emerald-400">
+            <span className="font-mono tabular-nums font-extrabold text-emerald-400">
               {batch.amount > 0 ? `₹${batch.amount}` : 'Free Access'}
             </span>
           )}
