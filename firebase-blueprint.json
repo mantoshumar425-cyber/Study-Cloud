@@ -1,0 +1,370 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Publicly safe student learning profile with zero PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "targetClass": { "type": "string", "maxLength": 32 },
+        "targetExam": { "type": "string", "maxLength": 40 },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "rankTitle": { "type": "string", "maxLength": 48 },
+        "currentStreak": { "type": "number" },
+        "completedCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "xp", "level", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Strictly isolated student PII (email and mobile number).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "mobile": { "type": "string", "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted platform administrator record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Course or Batch offering for Class 9-12, CBSE, JEE, NEET, and UPSC.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "category": { "type": "string", "maxLength": 40 },
+        "classLevel": { "type": "string", "maxLength": 24 },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 8 },
+        "isFree": { "type": "boolean" },
+        "published": { "type": "boolean" },
+        "syllabus": { "type": "string", "maxLength": 4000 },
+        "timetable": { "type": "string", "maxLength": 2000 },
+        "facultyName": { "type": "string", "maxLength": 120 },
+        "thumbnail": { "type": "string", "maxLength": 512 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "title", "category", "classLevel", "price", "isFree", "published", "createdBy", "createdAt", "updatedAt"]
+    },
+    "CourseEnrollment": {
+      "title": "CourseEnrollment",
+      "description": "Verified student enrollment in a course.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "paymentStatus": { "type": "string", "enum": ["free", "paid"] },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "enrolledAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "courseId", "paymentStatus", "enrolledAt"]
+    },
+    "LiveClass": {
+      "title": "LiveClass",
+      "description": "Scheduled or active online live class session.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "subject": { "type": "string", "maxLength": 60 },
+        "teacherName": { "type": "string", "maxLength": 100 },
+        "streamUrl": { "type": "string", "maxLength": 512 },
+        "scheduledAt": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["scheduled", "live", "ended"] },
+        "published": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "title", "subject", "teacherName", "status", "published", "createdBy", "createdAt", "updatedAt"]
+    },
+    "LiveAttendance": {
+      "title": "LiveAttendance",
+      "description": "Student attendance check-in for a live class.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "classId", "studentName", "joinedAt"]
+    },
+    "LiveMessage": {
+      "title": "LiveMessage",
+      "description": "Live chat or Q&A message in a live class.",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "kind": { "type": "string", "enum": ["chat", "qa"] },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["messageId", "classId", "userId", "senderName", "kind", "text", "createdAt"]
+    },
+    "DppSheet": {
+      "title": "DppSheet",
+      "description": "Daily Practice Problem set metadata.",
+      "type": "object",
+      "properties": {
+        "dppId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "subject": { "type": "string", "maxLength": 60 },
+        "chapter": { "type": "string", "maxLength": 120 },
+        "published": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dppId", "title", "subject", "chapter", "published", "createdBy", "createdAt", "updatedAt"]
+    },
+    "DppSubmission": {
+      "title": "DppSubmission",
+      "description": "Student DPP submission and score.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "dppId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "score": { "type": "number" },
+        "total": { "type": "number" },
+        "subjectiveNote": { "type": "string", "maxLength": 2000 },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "dppId", "score", "total", "submittedAt"]
+    },
+    "TestSeries": {
+      "title": "TestSeries",
+      "description": "Chapter, weekly, monthly, or full syllabus test definition.",
+      "type": "object",
+      "properties": {
+        "testId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 180 },
+        "seriesType": { "type": "string", "enum": ["chapter", "weekly", "monthly", "full"] },
+        "subject": { "type": "string", "maxLength": 60 },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "published": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["testId", "title", "seriesType", "subject", "durationMinutes", "totalMarks", "published", "createdBy", "createdAt", "updatedAt"]
+    },
+    "TestAttempt": {
+      "title": "TestAttempt",
+      "description": "Recorded student score and percentile basis for a test.",
+      "type": "object",
+      "properties": {
+        "attemptId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "testId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "score": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "accuracyPercent": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attemptId", "testId", "userId", "score", "maxScore", "accuracyPercent", "createdAt"]
+    },
+    "DoubtTicket": {
+      "title": "DoubtTicket",
+      "description": "Student question with optional image and teacher response.",
+      "type": "object",
+      "properties": {
+        "doubtId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "questionText": { "type": "string", "minLength": 3, "maxLength": 2000 },
+        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "teacherReply": { "type": "string", "maxLength": 4000 },
+        "repliedBy": { "type": "string", "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["doubtId", "userId", "studentName", "subject", "questionText", "status", "createdAt", "updatedAt"]
+    },
+    "PdfBookmark": {
+      "title": "PdfBookmark",
+      "description": "Bookmarked page inside PDF notes.",
+      "type": "object",
+      "properties": {
+        "bookmarkId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pdfUrl": { "type": "string", "minLength": 4, "maxLength": 1000 },
+        "pdfTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "pageNumber": { "type": "number" },
+        "note": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookmarkId", "userId", "pdfUrl", "pdfTitle", "pageNumber", "createdAt"]
+    },
+    "CourseOrder": {
+      "title": "CourseOrder",
+      "description": "Course purchase order linked to Stripe checkout or free enrollment.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "amount": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "couponCode": { "type": "string", "maxLength": 40 },
+        "currency": { "type": "string", "maxLength": 8 },
+        "status": { "type": "string", "enum": ["pending", "paid", "failed"] },
+        "stripeSessionId": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "userId", "courseId", "courseTitle", "amount", "currency", "status", "createdAt", "updatedAt"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount code.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "discountPercent": { "type": "number" },
+        "maxDiscount": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "discountPercent", "active", "createdBy", "createdAt", "updatedAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Platform announcement or class reminder.",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "body": { "type": "string", "minLength": 2, "maxLength": 800 },
+        "type": { "type": "string", "enum": ["live", "lecture", "notes", "test", "course"] },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["notificationId", "title", "body", "type", "active", "createdBy", "createdAt"]
+    },
+    "LeaderboardSummary": {
+      "title": "LeaderboardSummary",
+      "description": "Publicly readable XP and rank entry without PII.",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "exam": { "type": "string", "maxLength": 40 },
+        "xp": { "type": "number" },
+        "testScore": { "type": "number" },
+        "level": { "type": "number" },
+        "rankTitle": { "type": "string", "maxLength": 48 },
+        "completedCount": { "type": "number" },
+        "currentStreak": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["playerId", "uid", "displayName", "exam", "xp", "level", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Student public learning profile."
+    },
+    "/users/{userId}/private/info": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated student PII (email and mobile)."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin authorization registry."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Courses and batches catalog."
+    },
+    "/courses/{courseId}/enrollments/{userId}": {
+      "schema": { "$ref": "#/entities/CourseEnrollment" },
+      "description": "Enrolled student records per course."
+    },
+    "/liveClasses/{classId}": {
+      "schema": { "$ref": "#/entities/LiveClass" },
+      "description": "Live classroom sessions."
+    },
+    "/liveClasses/{classId}/attendance/{userId}": {
+      "schema": { "$ref": "#/entities/LiveAttendance" },
+      "description": "Student attendance per live class."
+    },
+    "/liveClasses/{classId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/LiveMessage" },
+      "description": "Live chat and Q&A messages per live class."
+    },
+    "/dpps/{dppId}": {
+      "schema": { "$ref": "#/entities/DppSheet" },
+      "description": "Daily Practice Problem sheets."
+    },
+    "/dpps/{dppId}/submissions/{userId}": {
+      "schema": { "$ref": "#/entities/DppSubmission" },
+      "description": "Student DPP submissions."
+    },
+    "/tests/{testId}": {
+      "schema": { "$ref": "#/entities/TestSeries" },
+      "description": "Online test series definitions."
+    },
+    "/tests/{testId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/TestAttempt" },
+      "description": "Student test attempts and scores."
+    },
+    "/doubts/{doubtId}": {
+      "schema": { "$ref": "#/entities/DoubtTicket" },
+      "description": "Student doubt tickets and teacher replies."
+    },
+    "/bookmarks/{bookmarkId}": {
+      "schema": { "$ref": "#/entities/PdfBookmark" },
+      "description": "Saved PDF page bookmarks."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/CourseOrder" },
+      "description": "Course purchase orders."
+    },
+    "/coupons/{code}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Discount coupons."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Announcements and reminders."
+    },
+    "/leaderboard/{playerId}": {
+      "schema": { "$ref": "#/entities/LeaderboardSummary" },
+      "description": "PII-free student leaderboard entries."
+    }
+  }
+}

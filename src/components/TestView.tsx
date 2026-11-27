@@ -26,6 +26,17 @@ import {
   startPwQuiz,
 } from '../services/batchService';
 import { recordStudyActivity } from '../services/adventureService';
+import { useAuth } from '../contexts/AuthContext';
+
+interface PlatformTestSeriesItem {
+  testId: string;
+  title: string;
+  seriesType: 'chapter' | 'weekly' | 'monthly' | 'full';
+  subject: string;
+  durationMinutes: number;
+  totalMarks: number;
+  questions: TestQuestion[];
+}
 
 interface TestQuestion {
   question: string;
@@ -37,6 +48,7 @@ interface TestQuestion {
 
 interface PracticePack {
   id: string;
+  platformTestId?: string;
   title: string;
   subject: string;
   exam: string;
@@ -258,6 +270,11 @@ export const TestView: React.FC<TestViewProps> = ({
   allBatches = [],
   onActivityUpdate,
 }) => {
+  const { user, getIdToken, openAuthModal } = useAuth();
+  const [platformTests, setPlatformTests] = useState<PlatformTestSeriesItem[]>([]);
+  const [seriesFilter, setSeriesFilter] = useState<'all' | 'chapter' | 'weekly' | 'monthly' | 'full'>('all');
+  const [submittedPercentile, setSubmittedPercentile] = useState<{ percentile: number; totalAttempts: number } | null>(null);
+
   // PW Test Proxy Browser State
   const pwBatchOptions = useMemo(() => {
     const merged = [
@@ -295,6 +312,17 @@ export const TestView: React.FC<TestViewProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
+  useEffect(() => {
+    void fetch(`/api/platform/tests?type=${encodeURIComponent(seriesFilter)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && Array.isArray(d.tests)) {
+          setPlatformTests(d.tests);
+        }
+      })
+      .catch(() => {});
+  }, [seriesFilter]);
+
   // Saved Score History
   const [pastAttempts, setPastAttempts] = useState<
     Array<{ title: string; score: number; maxScore: number; accuracy: number; date: number }>
@@ -328,6 +356,7 @@ export const TestView: React.FC<TestViewProps> = ({
     setMarked({});
     setSecondsLeft(Math.max(1, pack.durationMinutes * 60));
     setSubmitted(false);
+    setSubmittedPercentile(null);
   };
 
   useEffect(() => {
@@ -431,7 +460,7 @@ export const TestView: React.FC<TestViewProps> = ({
     return { correct, incorrect, skipped, score, maxScore, accuracy };
   }, [activePack, answers]);
 
-  const handleSubmitTest = () => {
+  const handleSubmitTest = async () => {
     if (!activePack || submitted) return;
     setSubmitted(true);
     recordStudyActivity();
@@ -449,6 +478,37 @@ export const TestView: React.FC<TestViewProps> = ({
     const maxScore = activePack.questions.length * 4;
     const attempted = correct + incorrect;
     const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+
+    if (activePack.platformTestId && user) {
+      try {
+        const token = await getIdToken();
+        if (token) {
+          const orderedAnswers = activePack.questions.map((_, i) =>
+            answers[i] === undefined ? null : answers[i]
+          );
+          const res = await fetch(
+            `/api/platform/tests/${encodeURIComponent(activePack.platformTestId)}/submit`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ answers: orderedAnswers }),
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (data?.success && typeof data.percentile === 'number') {
+            setSubmittedPercentile({
+              percentile: data.percentile,
+              totalAttempts: Number(data.totalAttempts || 1),
+            });
+          }
+        }
+      } catch {
+        // non-fatal fallback to local scorecard
+      }
+    }
 
     setPastAttempts((prev) => {
       const next = [
@@ -507,7 +567,11 @@ export const TestView: React.FC<TestViewProps> = ({
           {[
             { label: 'Total Score', value: `${summary.score} / ${summary.maxScore}`, accent: 'text-[var(--primary-color)]' },
             { label: 'Accuracy', value: `${summary.accuracy}%`, accent: 'text-emerald-400' },
-            { label: 'Correct', value: `${summary.correct}`, accent: 'text-emerald-400' },
+            {
+              label: submittedPercentile ? 'Live Percentile' : 'Correct',
+              value: submittedPercentile ? `${submittedPercentile.percentile}%ile (${submittedPercentile.totalAttempts} ranked)` : `${summary.correct}`,
+              accent: 'text-emerald-400',
+            },
             { label: 'Incorrect / Skipped', value: `${summary.incorrect} / ${summary.skipped}`, accent: 'text-amber-400' },
           ].map((stat) => (
             <div
@@ -521,6 +585,19 @@ export const TestView: React.FC<TestViewProps> = ({
             </div>
           ))}
         </div>
+
+        {activePack.platformTestId && !user && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+            <span>Sign in to submit Official Test attempts to your All-India Rank &amp; Percentile history.</span>
+            <button
+              type="button"
+              onClick={openAuthModal}
+              className="rounded-lg bg-[#16A34A] px-3 py-1 font-bold text-white"
+            >
+              Sign In Now
+            </button>
+          </div>
+        )}
 
         {/* Detailed Question Review */}
         <div className="space-y-3">
@@ -787,16 +864,95 @@ export const TestView: React.FC<TestViewProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[var(--primary-color)]">
               <ClipboardCheck className="h-4 w-4" />
-              <span>Study Cloud · PW Test Proxy & CBT Simulator</span>
+              <span>Study Cloud · Online Test Series &amp; CBT Simulator</span>
             </div>
             <h1 className="font-['Sora'] text-xl sm:text-2xl font-extrabold text-[var(--text-primary)]">
-              PW Batch Quizzes, Tests & Mock Exams
+              Chapter, Weekly, Monthly &amp; Full-Syllabus Tests
             </h1>
             <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
-              Browse live PW batch DPP quizzes via proxy and attempt timed JEE/NEET/Board CBT tests
-              with +4/-1 NTA scoring.
+              Attempt official Study Cloud test series to calculate your verified All-India Rank &amp;
+              Percentile, or launch live PW batch quizzes in timed +4/-1 NTA CBT mode.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Study Cloud Official Online Test Series (Backend Ranked) */}
+      <div className="rounded-2xl border border-emerald-500/25 bg-[var(--card-bg)] p-4 sm:p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-['Sora'] text-base sm:text-lg font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-[#22C55E]" />
+              <span>Study Cloud Official Test Series (AIR Eligible)</span>
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Filter by Chapter Test, Weekly Sprint, Monthly Mega Test, or Full Syllabus Mock.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'all', label: 'All Series' },
+              { id: 'chapter', label: 'Chapter' },
+              { id: 'weekly', label: 'Weekly' },
+              { id: 'monthly', label: 'Monthly' },
+              { id: 'full', label: 'Full Syllabus' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSeriesFilter(tab.id as any)}
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                  seriesFilter === tab.id
+                    ? 'bg-[#16A34A] text-white'
+                    : 'border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {platformTests.map((t) => (
+            <div
+              key={t.testId}
+              className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] p-4 hover:border-[#22C55E]/60 transition"
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="rounded bg-[#16A34A]/20 px-2 py-0.5 uppercase text-emerald-400">
+                    {t.seriesType}
+                  </span>
+                  <span className="font-mono text-[var(--text-secondary)]">
+                    {t.questions.length} Qs · {t.durationMinutes}m
+                  </span>
+                </div>
+                <h3 className="font-['Sora'] text-sm font-extrabold text-[var(--text-primary)] line-clamp-2">
+                  {t.title}
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)]">{t.subject}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  startPack({
+                    id: t.testId,
+                    platformTestId: t.testId,
+                    title: t.title,
+                    subject: t.subject,
+                    exam: `${t.seriesType.toUpperCase()} SERIES`,
+                    durationMinutes: t.durationMinutes,
+                    questions: t.questions,
+                  })
+                }
+                className="w-full rounded-xl bg-[#16A34A] hover:bg-[#22C55E] py-2 text-xs font-bold text-white transition flex items-center justify-center gap-1.5"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Start Ranked Test</span>
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 

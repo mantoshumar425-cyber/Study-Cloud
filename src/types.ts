@@ -354,12 +354,20 @@ export type ThemeId =
   | 'light';
 
 export type NavTab =
+  | 'dashboard'
   | 'batches'
+  | 'live'
   | 'khazana'
   | 'pi'
+  | 'dpp'
   | 'community'
   | 'test'
+  | 'doubts'
   | 'leaderboard'
+  | 'notifications'
+  | 'profile'
+  | 'cart'
+  | 'admin'
   | 'search'
   | 'downloads'
   | 'favorites'
@@ -368,14 +376,146 @@ export type NavTab =
 
 export interface LeaderboardEntry {
   playerId: string;
+  uid?: string;
   name: string;
   exam: string;
+  batchName?: string;
   xp: number;
+  weeklyXp?: number;
+  monthlyXp?: number;
+  testScore?: number;
+  testMaxScore?: number;
+  percentile?: number;
   level: number;
   rank: string;
   completedCount: number;
   currentStreak: number;
   updatedAt: number;
+}
+
+export interface PlatformCourse {
+  courseId: string;
+  title: string;
+  category: string;
+  classLevel: string;
+  price: number;
+  currency: string;
+  isFree: boolean;
+  published: boolean;
+  syllabus: string;
+  timetable: string;
+  facultyName: string;
+  thumbnail: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LiveClassSession {
+  classId: string;
+  title: string;
+  subject: string;
+  teacherName: string;
+  streamUrl: string;
+  scheduledAt: string;
+  status: 'scheduled' | 'live' | 'ended';
+  published: boolean;
+  attendeeCount?: number;
+  createdAt: number;
+}
+
+export interface LiveChatMessage {
+  messageId: string;
+  classId: string;
+  userId: string;
+  senderName: string;
+  kind: 'chat' | 'qa';
+  text: string;
+  reply?: string;
+  createdAt: number;
+}
+
+export interface DppQuestion {
+  id: string;
+  kind: 'mcq' | 'subjective';
+  prompt: string;
+  options?: string[];
+  correctIndex?: number;
+  explanation: string;
+}
+
+export interface DppSheet {
+  dppId: string;
+  title: string;
+  subject: string;
+  chapter: string;
+  classLevel: string;
+  questions: DppQuestion[];
+  published: boolean;
+  createdAt: number;
+}
+
+export interface DppSubmissionItem {
+  dppId: string;
+  userId: string;
+  score: number;
+  total: number;
+  subjectiveAnswer?: string;
+  submittedAt: number;
+}
+
+export interface DoubtTicket {
+  doubtId: string;
+  userId: string;
+  studentName: string;
+  subject: string;
+  questionText: string;
+  imageUrl?: string;
+  status: 'open' | 'resolved';
+  teacherReply?: string;
+  repliedBy?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PdfBookmarkItem {
+  bookmarkId: string;
+  userId: string;
+  pdfUrl: string;
+  pdfTitle: string;
+  pageNumber: number;
+  note?: string;
+  createdAt: number;
+}
+
+export interface PlatformNotification {
+  notificationId: string;
+  title: string;
+  body: string;
+  type: 'live' | 'lecture' | 'notes' | 'test' | 'course';
+  active: boolean;
+  createdAt: number;
+}
+
+export interface CourseOrderItem {
+  orderId: string;
+  userId: string;
+  courseId: string;
+  courseTitle: string;
+  amount: number;
+  discountAmount: number;
+  couponCode?: string;
+  currency: string;
+  status: 'pending' | 'paid' | 'failed';
+  stripeSessionId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CouponCodeItem {
+  code: string;
+  discountPercent: number;
+  maxDiscount: number;
+  active: boolean;
 }
 
 export type AiStudyLanguage = 'hinglish' | 'hindi' | 'english';

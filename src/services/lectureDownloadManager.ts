@@ -7,6 +7,12 @@ import {
   OfflineLectureMeta,
   saveOfflineLecture,
 } from './offlineLectureDb';
+import {
+  DownloadHistoryStatus,
+  DownloadRetryTarget,
+  upsertDownloadHistory,
+} from './downloadHistoryDb';
+import { downloadLectureInBrowser } from './clientLectureDownloader';
 
 export type DownloadSaveTarget = 'both' | 'app' | 'gallery';
 
@@ -65,8 +71,49 @@ export interface LectureDownloadJobState {
   offlineId?: string;
   galleryBlobUrl?: string;
   savingToGallery?: boolean;
+  startedAt?: number;
   retryTarget?: LectureDownloadTarget;
   retryOption?: LectureDownloadOption;
+}
+
+function toRetryTarget(target?: LectureDownloadTarget | null): DownloadRetryTarget | undefined {
+  if (!target) return undefined;
+  const { resolvedStream: _rs, ...rest } = target;
+  return rest;
+}
+
+function recordJobHistory(
+  job: LectureDownloadJobState,
+  status: DownloadHistoryStatus,
+  overrides?: {
+    sizeBytes?: number;
+    durationSecs?: number;
+    savedInApp?: boolean;
+    error?: string | null;
+    completedAt?: number;
+  }
+) {
+  const now = Date.now();
+  upsertDownloadHistory({
+    id: job.id,
+    title: job.title,
+    batchName: job.batchName,
+    subjectName: job.subjectName,
+    thumbnail: job.thumbnail,
+    qualityLabel: job.qualityLabel,
+    format: job.format,
+    fileName: job.fileName,
+    sizeBytes: overrides?.sizeBytes ?? job.downloadedBytes ?? 0,
+    durationSecs: overrides?.durationSecs ?? job.totalDurationSecs ?? 0,
+    saveTarget: job.saveTarget,
+    savedInApp: overrides?.savedInApp ?? job.savedInApp ?? false,
+    status,
+    error: overrides?.error !== undefined ? overrides.error : job.error,
+    startedAt: job.startedAt || now,
+    completedAt: overrides?.completedAt ?? (status === 'downloaded' ? now : undefined),
+    updatedAt: now,
+    retryTarget: toRetryTarget(job.retryTarget),
+  });
 }
 
 interface ManagerState {
@@ -110,6 +157,8 @@ let state: ManagerState = {
 const listeners = new Set<() => void>();
 const pollTimers = new Map<string, number>();
 const finalizingJobs = new Set<string>();
+const activeAbortControllers = new Map<string, AbortController>();
+const transientJobBlobs = new Map<string, Blob>();
 let navigateToDownloadsHandler: (() => void) | null = null;
 let playOfflineHandler: ((meta: OfflineLectureMeta) => void) | null = null;
 
@@ -258,6 +307,27 @@ export async function saveJobToGallery(jobId: string, forceShareSheet = false): 
     }
   }
 
+  const transientBlob = transientJobBlobs.get(jobId);
+  if (transientBlob) {
+    const galleryBlobUrl = job.galleryBlobUrl || URL.createObjectURL(transientBlob);
+    if (!job.galleryBlobUrl) {
+      setState({
+        jobs: state.jobs.map((j) =>
+          j.id === jobId ? { ...j, galleryBlobUrl, inAppWarning: null } : j
+        ),
+      });
+    }
+    await exportMediaToDeviceGallery({
+      blob: transientBlob,
+      blobUrl: galleryBlobUrl,
+      fileName,
+      mimeType,
+      title: job.title || fileName,
+      forceShareSheet,
+    });
+    return;
+  }
+
   if (job.galleryBlobUrl && !forceShareSheet) {
     await exportMediaToDeviceGallery({
       blobUrl: job.galleryBlobUrl,
@@ -270,47 +340,15 @@ export async function saveJobToGallery(jobId: string, forceShareSheet = false): 
 
   setState({
     jobs: state.jobs.map((j) =>
-      j.id === jobId ? { ...j, savingToGallery: true, inAppWarning: null } : j
+      j.id === jobId
+        ? {
+            ...j,
+            savingToGallery: false,
+            inAppWarning: 'File expire ho chuki hai — Retry dabakar fir se download karein.',
+          }
+        : j
     ),
   });
-  try {
-    const blob = await fetchChunkedBlobFromServer(
-      jobId,
-      job.downloadedBytes || 0,
-      mimeType,
-      () => {}
-    );
-    if (blob.size > 0) {
-      const galleryBlobUrl = job.galleryBlobUrl || URL.createObjectURL(blob);
-      setState({
-        jobs: state.jobs.map((j) =>
-          j.id === jobId ? { ...j, galleryBlobUrl, savingToGallery: false } : j
-        ),
-      });
-      await exportMediaToDeviceGallery({
-        blob,
-        blobUrl: galleryBlobUrl,
-        fileName,
-        mimeType,
-        title: job.title || fileName,
-        forceShareSheet,
-      });
-      return;
-    }
-    throw new Error('Empty file received');
-  } catch (err: any) {
-    setState({
-      jobs: state.jobs.map((j) =>
-        j.id === jobId
-          ? {
-              ...j,
-              savingToGallery: false,
-              inAppWarning: `Gallery save error: ${err?.message || 'Session expire — Retry karein.'}`,
-            }
-          : j
-      ),
-    });
-  }
 }
 
 async function finalizeCompletedServerJob(
@@ -404,6 +442,7 @@ async function finalizeCompletedServerJob(
     }
 
     const finalSize = fetchedBlob?.size || serverBytes;
+    const finalDuration = Number(serverData.totalDurationSecs ?? jobSnapshot.totalDurationSecs ?? 0);
 
     setState({
       jobs: state.jobs.map((j) =>
@@ -413,7 +452,7 @@ async function finalizeCompletedServerJob(
               status: 'ready',
               percent: 100,
               downloadedBytes: finalSize,
-              totalDurationSecs: Number(serverData.totalDurationSecs ?? j.totalDurationSecs),
+              totalDurationSecs: finalDuration,
               processedSecs: Number(serverData.processedSecs ?? j.processedSecs),
               fileName,
               autoSaved: true,
@@ -425,6 +464,18 @@ async function finalizeCompletedServerJob(
           : j
       ),
     });
+
+    recordJobHistory(
+      { ...jobSnapshot, fileName },
+      'downloaded',
+      {
+        sizeBytes: finalSize,
+        durationSecs: finalDuration,
+        savedInApp: savedOfflineOk,
+        error: null,
+        completedAt: Date.now(),
+      }
+    );
 
     if (wantsGallery && fetchedBlob) {
       try {
@@ -455,17 +506,22 @@ function startPollingJob(jobId: string) {
       if (!res.ok) {
         stopPollingJob(jobId);
         if (res.status === 404) {
+          const expireMsg = 'Download session expire ho gaya — Retry dabakar fir se download karein.';
+          const targetJob = state.jobs.find((j) => j.id === jobId);
           setState({
             jobs: state.jobs.map((j) =>
               j.id === jobId && j.status !== 'ready' && j.status !== 'cancelled'
                 ? {
                     ...j,
                     status: 'error',
-                    error: 'Download session expire ho gaya — Retry dabakar fir se download karein.',
+                    error: expireMsg,
                   }
                 : j
             ),
           });
+          if (targetJob && targetJob.status !== 'ready' && targetJob.status !== 'cancelled') {
+            recordJobHistory(targetJob, 'failed', { error: expireMsg });
+          }
         }
         return;
       }
@@ -496,6 +552,14 @@ function startPollingJob(jobId: string) {
 
       if (data.status === 'error' || data.status === 'cancelled') {
         stopPollingJob(jobId);
+        const finishedJob = updated.find((j) => j.id === jobId);
+        if (finishedJob) {
+          recordJobHistory(
+            finishedJob,
+            data.status === 'cancelled' ? 'cancelled' : 'failed',
+            { error: data.error || (data.status === 'error' ? 'Download failed' : null) }
+          );
+        }
         return;
       }
     } catch {
@@ -620,73 +684,189 @@ export async function startLectureDownload(
   const title = currentTarget?.title || 'PW Lecture';
   const durationSecs = state.durationSecs || 0;
   const saveTarget = state.saveTarget;
+  const qualityLabel = option.qualityTag || option.label;
+  const safeTitle =
+    String(title)
+      .replace(/[/\\?%*:|"<>]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80) || 'PW_Lecture';
+  const fileName = `${safeTitle} (${qualityLabel}).${option.format}`;
+  const jobId = `dl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const startedAt = Date.now();
 
   if (!overrideTarget) {
     closeLectureDownloadModal();
   }
-  setState({ queueOpen: true });
+
+  const abortController = new AbortController();
+  activeAbortControllers.set(jobId, abortController);
+
+  const newJob: LectureDownloadJobState = {
+    id: jobId,
+    title,
+    batchName: currentTarget?.batchName,
+    subjectName: currentTarget?.subjectName,
+    thumbnail: currentTarget?.videoImg,
+    qualityLabel,
+    format: option.format,
+    fileName,
+    status: 'downloading',
+    percent: 1,
+    downloadedBytes: 0,
+    totalDurationSecs: durationSecs,
+    processedSecs: 0,
+    autoSaved: false,
+    saveTarget,
+    startedAt,
+    retryTarget: currentTarget || undefined,
+    retryOption: option,
+  };
+
+  setState({ jobs: [newJob, ...state.jobs], queueOpen: true });
+
+  let lastUiUpdateAt = 0;
 
   try {
-    const res = await fetch('/api/lecture-download/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: option.url,
-        title,
-        qualityLabel: option.qualityTag || option.label,
-        format: option.format,
-        durationSecs,
-        isDirectMp4: Boolean(option.isDirectMp4),
-      }),
+    const result = await downloadLectureInBrowser({
+      url: option.url,
+      format: option.format,
+      isDirectMp4: Boolean(option.isDirectMp4),
+      durationSecs,
+      signal: abortController.signal,
+      onProgress: (p) => {
+        if (abortController.signal.aborted) return;
+        const now = Date.now();
+        if (now - lastUiUpdateAt < 180 && p.percent < 94) return;
+        lastUiUpdateAt = now;
+        setState({
+          jobs: state.jobs.map((j) =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  status: 'downloading',
+                  percent: p.percent,
+                  downloadedBytes: p.downloadedBytes,
+                  processedSecs: p.processedSecs,
+                  totalDurationSecs: p.totalDurationSecs || j.totalDurationSecs,
+                }
+              : j
+          ),
+        });
+      },
     });
-    const json = await safeReadJson<any>(res, 'Could not start download');
-    if (!json.success || !json.jobId) {
-      throw new Error(json.message || 'Could not start download.');
+
+    if (abortController.signal.aborted) return;
+
+    const wantsInApp = saveTarget === 'app' || saveTarget === 'both';
+    const wantsGallery = saveTarget === 'gallery' || saveTarget === 'both';
+
+    setState({
+      jobs: state.jobs.map((j) =>
+        j.id === jobId
+          ? {
+              ...j,
+              status: 'finalizing',
+              percent: 97,
+              downloadedBytes: result.sizeBytes,
+              totalDurationSecs: result.durationSecs || j.totalDurationSecs,
+            }
+          : j
+      ),
+    });
+
+    const galleryBlobUrl = URL.createObjectURL(result.blob);
+    transientJobBlobs.set(jobId, result.blob);
+
+    let savedOfflineOk = false;
+    let inAppWarning: string | null = null;
+
+    if (wantsInApp) {
+      try {
+        await saveOfflineLecture({
+          id: jobId,
+          title,
+          batchName: currentTarget?.batchName,
+          subjectName: currentTarget?.subjectName,
+          qualityLabel,
+          format: option.format,
+          fileName,
+          sizeBytes: result.sizeBytes,
+          durationSecs: result.durationSecs || durationSecs,
+          thumbnail: currentTarget?.videoImg,
+          savedAt: Date.now(),
+          mimeType: result.mimeType,
+          blob: result.blob,
+        });
+        savedOfflineOk = true;
+      } catch (idbErr: any) {
+        savedOfflineOk = false;
+        const isQuota =
+          idbErr?.name === 'QuotaExceededError' ||
+          String(idbErr?.message || '').toLowerCase().includes('quota');
+        inAppWarning = isQuota
+          ? 'Browser storage full hai — niche Gallery button se phone mein save karein.'
+          : 'In-App vault save blocked — niche Gallery button se save karein.';
+      }
     }
 
-    const newJob: LectureDownloadJobState = {
-      id: json.jobId,
-      title,
-      batchName: currentTarget?.batchName,
-      subjectName: currentTarget?.subjectName,
-      thumbnail: currentTarget?.videoImg,
-      qualityLabel: option.qualityTag || option.label,
-      format: option.format,
-      fileName: json.fileName || `${title}.${option.format}`,
-      status: 'downloading',
-      percent: 1,
-      downloadedBytes: 0,
-      totalDurationSecs: durationSecs,
-      processedSecs: 0,
-      autoSaved: false,
-      saveTarget,
-      retryTarget: currentTarget || undefined,
-      retryOption: option,
+    const completedSnapshot: LectureDownloadJobState = {
+      ...newJob,
+      status: 'ready',
+      percent: 100,
+      downloadedBytes: result.sizeBytes,
+      totalDurationSecs: result.durationSecs || durationSecs,
+      processedSecs: result.durationSecs || durationSecs,
+      autoSaved: true,
+      savedInApp: savedOfflineOk,
+      inAppWarning,
+      offlineId: savedOfflineOk ? jobId : undefined,
+      galleryBlobUrl,
     };
 
-    setState({ jobs: [newJob, ...state.jobs] });
-    startPollingJob(json.jobId);
+    setState({
+      jobs: state.jobs.map((j) => (j.id === jobId ? completedSnapshot : j)),
+    });
+
+    recordJobHistory(completedSnapshot, 'downloaded', {
+      sizeBytes: result.sizeBytes,
+      durationSecs: result.durationSecs || durationSecs,
+      savedInApp: savedOfflineOk,
+      error: null,
+      completedAt: Date.now(),
+    });
+
+    if (wantsGallery) {
+      try {
+        await exportMediaToDeviceGallery({
+          blob: result.blob,
+          blobUrl: galleryBlobUrl,
+          fileName,
+          mimeType: result.mimeType,
+          title,
+        });
+      } catch {
+        // User has instant local blob Gallery button on the card
+      }
+    }
   } catch (err: any) {
-    const errJob: LectureDownloadJobState = {
-      id: `err-${Date.now()}`,
-      title,
-      batchName: currentTarget?.batchName,
-      subjectName: currentTarget?.subjectName,
-      thumbnail: currentTarget?.videoImg,
-      qualityLabel: option.qualityTag || option.label,
-      format: option.format,
-      fileName: `${title}.${option.format}`,
+    if (err?.name === 'AbortError' || abortController.signal.aborted) {
+      return;
+    }
+    const errMsg = err?.message || 'Download failed';
+    const errSnapshot: LectureDownloadJobState = {
+      ...newJob,
       status: 'error',
       percent: 0,
-      downloadedBytes: 0,
-      totalDurationSecs: 0,
-      processedSecs: 0,
-      error: err?.message || 'Download failed to start',
-      saveTarget,
-      retryTarget: currentTarget || undefined,
-      retryOption: option,
+      error: errMsg,
     };
-    setState({ jobs: [errJob, ...state.jobs], queueOpen: true });
+    setState({
+      jobs: state.jobs.map((j) => (j.id === jobId ? errSnapshot : j)),
+      queueOpen: true,
+    });
+    recordJobHistory(errSnapshot, 'failed', { error: errMsg });
+  } finally {
+    activeAbortControllers.delete(jobId);
   }
 }
 
@@ -715,7 +895,22 @@ export async function retryLectureDownload(jobId: string): Promise<void> {
 
 export async function cancelLectureDownload(jobId: string): Promise<void> {
   stopPollingJob(jobId);
+  const controller = activeAbortControllers.get(jobId);
+  if (controller) {
+    controller.abort();
+    activeAbortControllers.delete(jobId);
+  }
+  transientJobBlobs.delete(jobId);
+
   const existing = state.jobs.find((j) => j.id === jobId);
+  if (
+    existing &&
+    (existing.status === 'preparing' ||
+      existing.status === 'downloading' ||
+      existing.status === 'finalizing')
+  ) {
+    recordJobHistory(existing, 'cancelled');
+  }
   if (existing?.galleryBlobUrl) {
     try {
       URL.revokeObjectURL(existing.galleryBlobUrl);
@@ -726,11 +921,6 @@ export async function cancelLectureDownload(jobId: string): Promise<void> {
   setState({
     jobs: state.jobs.filter((j) => j.id !== jobId),
   });
-  if (!jobId.startsWith('err-')) {
-    await fetch(`/api/lecture-download/${encodeURIComponent(jobId)}`, { method: 'DELETE' }).catch(
-      () => {}
-    );
-  }
 }
 
 export function clearFinishedDownloads(): void {
@@ -738,11 +928,14 @@ export function clearFinishedDownloads(): void {
   for (const j of state.jobs) {
     if (j.status === 'downloading' || j.status === 'preparing' || j.status === 'finalizing') {
       remaining.push(j);
-    } else if (j.galleryBlobUrl) {
-      try {
-        URL.revokeObjectURL(j.galleryBlobUrl);
-      } catch {
-        // ignore
+    } else {
+      transientJobBlobs.delete(j.id);
+      if (j.galleryBlobUrl) {
+        try {
+          URL.revokeObjectURL(j.galleryBlobUrl);
+        } catch {
+          // ignore
+        }
       }
     }
   }

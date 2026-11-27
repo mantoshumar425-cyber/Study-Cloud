@@ -15,6 +15,11 @@ import {
   refreshStudyParchamSigForUrl,
 } from './serverStudyParcham.ts';
 import { registerFeatureRoutes } from './serverFeatureRoutes.ts';
+import {
+  attachPlatformWebSocketServer,
+  PlatformWsHub,
+  registerPlatformRoutes,
+} from './serverPlatformRoutes.ts';
 
 dotenv.config();
 
@@ -2272,12 +2277,25 @@ export function createApiApp(): express.Express {
     USER_AGENT,
   });
 
+  let activeWsHub: PlatformWsHub | null = null;
+  registerPlatformRoutes(app, {
+    broadcastNotification: (notif: any) => {
+      activeWsHub?.broadcastNotification(notif);
+    },
+  });
+
+  (app as any).__setWsHub = (hub: PlatformWsHub) => {
+    activeWsHub = hub;
+  };
+
   return app;
 }
 
 async function startServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
+  const wsHub = attachPlatformWebSocketServer(httpServer);
+  (app as any).__setWsHub?.(wsHub);
 
   // Vite dev middleware or static dist
   if (process.env.NODE_ENV !== 'production') {
@@ -2287,7 +2305,6 @@ async function startServer() {
         middlewareMode: true,
         hmr: false,
         allowedHosts: true,
-        ws: { server: httpServer },
       },
       appType: 'spa',
     });

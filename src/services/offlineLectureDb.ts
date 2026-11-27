@@ -1,3 +1,9 @@
+import {
+  markDownloadHistoryDeleted,
+  markManyDownloadHistoryDeleted,
+  syncOfflineMetaToDownloadHistory,
+} from './downloadHistoryDb';
+
 const DB_NAME = 'studycloud_offline_vault';
 const DB_VERSION = 1;
 const STORE_NAME = 'lectures';
@@ -79,9 +85,11 @@ export async function listOfflineLectureMeta(): Promise<OfflineLectureMeta[]> {
       req.onsuccess = () => resolve((req.result as OfflineLectureRecord[]) || []);
       req.onerror = () => reject(req.error);
     });
-    return rows
+    const metas = rows
       .map(({ blob: _blob, ...meta }) => meta)
       .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+    syncOfflineMetaToDownloadHistory(metas);
+    return metas;
   } catch {
     return [];
   }
@@ -102,7 +110,13 @@ export async function getOfflineLectureRecord(id: string): Promise<OfflineLectur
 }
 
 export async function deleteOfflineLecture(id: string): Promise<void> {
+  let deletedMeta: OfflineLectureMeta | null = null;
   try {
+    const existing = await getOfflineLectureRecord(id);
+    if (existing) {
+      const { blob: _blob, ...meta } = existing;
+      deletedMeta = meta;
+    }
     const db = await openVaultDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -111,12 +125,15 @@ export async function deleteOfflineLecture(id: string): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
   } finally {
+    markDownloadHistoryDeleted(id, deletedMeta);
     notifyVaultChanged();
   }
 }
 
 export async function clearAllOfflineLectures(): Promise<void> {
+  let existingMetas: OfflineLectureMeta[] = [];
   try {
+    existingMetas = await listOfflineLectureMeta();
     const db = await openVaultDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -125,6 +142,7 @@ export async function clearAllOfflineLectures(): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
   } finally {
+    markManyDownloadHistoryDeleted(existingMetas);
     notifyVaultChanged();
   }
 }

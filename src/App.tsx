@@ -21,6 +21,7 @@ import {
   toggleFavorite as toggleFavoriteService,
   getWatchHistory,
   clearWatchHistory as clearWatchHistoryService,
+  removeWatchHistoryItem as removeWatchHistoryItemService,
   getStoredTheme,
   prefetchPiHome,
   setStoredTheme,
@@ -210,6 +211,11 @@ export default function App() {
   const handleClearHistory = () => {
     clearWatchHistoryService();
     setWatchHistory([]);
+  };
+
+  const handleDeleteHistoryItem = (id: string) => {
+    removeWatchHistoryItemService(id);
+    setWatchHistory(getWatchHistory());
   };
 
   const handleRefreshHistory = () => {
@@ -532,6 +538,7 @@ export default function App() {
                   if (found) setSelectedBatch(found);
                 }
               }}
+              onDeleteItem={handleDeleteHistoryItem}
               onClearHistory={handleClearHistory}
               onBrowseBatches={() => setCurrentTab('batches')}
             />

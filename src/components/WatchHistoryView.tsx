@@ -5,6 +5,7 @@ import { WatchHistoryItem } from '../types';
 interface WatchHistoryViewProps {
   history: WatchHistoryItem[];
   onPlayItem: (item: WatchHistoryItem) => void;
+  onDeleteItem?: (id: string) => void;
   onClearHistory: () => void;
   onBrowseBatches: () => void;
 }
@@ -12,6 +13,7 @@ interface WatchHistoryViewProps {
 export const WatchHistoryView: React.FC<WatchHistoryViewProps> = ({
   history,
   onPlayItem,
+  onDeleteItem,
   onClearHistory,
   onBrowseBatches,
 }) => {
@@ -144,6 +146,16 @@ export const WatchHistoryView: React.FC<WatchHistoryViewProps> = ({
                   </span>
                   <span>Resume</span>
                 </button>
+                {onDeleteItem && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteItem(item.id)}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-400 transition"
+                    title="Delete from watch history"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           ))}

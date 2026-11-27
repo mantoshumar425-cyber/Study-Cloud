@@ -777,6 +777,16 @@ export function clearWatchHistory(): void {
   }
 }
 
+export function removeWatchHistoryItem(id: string): void {
+  try {
+    const list = getWatchHistory();
+    const updated = list.filter((x) => x.id !== id);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+}
+
 // Theme helper
 export function getStoredTheme(): ThemeId {
   try {

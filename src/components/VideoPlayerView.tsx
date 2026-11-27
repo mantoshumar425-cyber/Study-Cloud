@@ -26,6 +26,7 @@ import {
   MoreVertical,
   Settings,
   List,
+  Captions,
 } from 'lucide-react';
 import { ResolvedStream } from '../types';
 import {
@@ -120,6 +121,15 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [qualityLevels, setQualityLevels] = useState<Array<{ index: number; label: string }>>([]);
   const [currentLevel, setCurrentLevel] = useState<number>(-1);
 
+  // Captions & Subtitles
+  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ id: number; name: string; lang?: string }>>([]);
+  const [activeSubtitleTrack, setActiveSubtitleTrack] = useState<number>(-1);
+  const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(false);
+  const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
+  const [customSubtitleName, setCustomSubtitleName] = useState<string>('');
+  const customSubtitleRef = useRef<string | null>(null);
+  const subtitleFileInputRef = useRef<HTMLInputElement>(null);
+
   // Popups & Drawers
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -171,6 +181,10 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       if (offlineBlobUrlRef.current) {
         URL.revokeObjectURL(offlineBlobUrlRef.current);
         offlineBlobUrlRef.current = null;
+      }
+      if (customSubtitleRef.current) {
+        URL.revokeObjectURL(customSubtitleRef.current);
+        customSubtitleRef.current = null;
       }
       if (seekFeedbackTimerRef.current) {
         window.clearTimeout(seekFeedbackTimerRef.current);
@@ -346,10 +360,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         }));
         setQualityLevels(levels);
         setCurrentLevel(-1);
+        const hlsSubs = (hls.subtitleTracks || []).map((t: any, idx: number) => ({
+          id: idx,
+          name: t.name || t.lang || `Subtitle ${idx + 1}`,
+          lang: t.lang,
+        }));
+        setSubtitleTracks(hlsSubs);
         if (lecture.resumeSeconds && lecture.resumeSeconds > 5) {
           videoEl.currentTime = lecture.resumeSeconds;
         }
         safeAttemptPlay();
+      });
+
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
+        const list = (data.subtitleTracks || []).map((t: any, idx: number) => ({
+          id: idx,
+          name: t.name || t.lang || `Subtitle ${idx + 1}`,
+          lang: t.lang,
+        }));
+        setSubtitleTracks(list);
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -443,6 +472,60 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
       videoRef.current.muted = isMuted;
     }
   }, [isMuted]);
+
+  // Sync captions/subtitles across HLS & native <video> textTracks
+  useEffect(() => {
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = captionsEnabled ? Math.max(0, activeSubtitleTrack) : -1;
+      hlsRef.current.subtitleDisplay = captionsEnabled;
+    }
+    const vid = videoRef.current;
+    if (vid && vid.textTracks) {
+      for (let i = 0; i < vid.textTracks.length; i++) {
+        const tr = vid.textTracks[i];
+        tr.mode = captionsEnabled ? 'showing' : 'hidden';
+      }
+    }
+  }, [captionsEnabled, activeSubtitleTrack, customSubtitleUrl]);
+
+  const handleLoadSubtitleFile = async (file: File) => {
+    try {
+      let text = await file.text();
+      if (file.name.toLowerCase().endsWith('.srt') && !text.trimStart().startsWith('WEBVTT')) {
+        text =
+          'WEBVTT\n\n' +
+          text
+            .replace(/\r+/g, '')
+            .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+      }
+      const blob = new Blob([text], { type: 'text/vtt' });
+      const url = URL.createObjectURL(blob);
+      if (customSubtitleRef.current) {
+        URL.revokeObjectURL(customSubtitleRef.current);
+      }
+      customSubtitleRef.current = url;
+      setCustomSubtitleUrl(url);
+      setCustomSubtitleName(file.name);
+      setCaptionsEnabled(true);
+      setShowSettingsMenu(false);
+    } catch {
+      // ignore invalid subtitle file
+    }
+  };
+
+  const toggleCaptions = () => {
+    if (captionsEnabled) {
+      setCaptionsEnabled(false);
+    } else if (subtitleTracks.length > 0 || customSubtitleUrl || (videoRef.current?.textTracks?.length || 0) > 0) {
+      if (activeSubtitleTrack < 0 && subtitleTracks.length > 0) {
+        setActiveSubtitleTrack(0);
+      }
+      setCaptionsEnabled(true);
+    } else {
+      setShowSettingsMenu(true);
+    }
+    revealControls();
+  };
 
   const togglePlayPause = useCallback(() => {
     const vid = videoRef.current;
@@ -971,7 +1054,17 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               className={`h-full w-full cursor-pointer ${
                 fillMode === 'cover' ? 'object-cover' : 'object-contain'
               } ${isAudioOnly ? 'opacity-0 pointer-events-none absolute inset-0' : ''}`}
-            />
+            >
+              {customSubtitleUrl && (
+                <track
+                  kind="subtitles"
+                  src={customSubtitleUrl}
+                  srcLang="en"
+                  label={customSubtitleName || 'Custom Captions'}
+                  default={captionsEnabled}
+                />
+              )}
+            </video>
 
             {/* Center Red Play Overlay when paused & not buffering */}
             {!isLocked && !isPlaying && !isBuffering && !isAudioOnly && (
@@ -1241,7 +1334,20 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                     </button>
                   )}
 
-                  {/* Settings (Quality & Speed) */}
+                  {/* Captions / Subtitles Toggle */}
+                  <button
+                    onClick={toggleCaptions}
+                    className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                      captionsEnabled
+                        ? 'bg-[#16A34A] text-white'
+                        : 'text-white hover:bg-[#16A34A]'
+                    }`}
+                    title={captionsEnabled ? 'Disable Captions (CC)' : 'Captions & Subtitles (CC)'}
+                  >
+                    <Captions className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </button>
+
+                  {/* Settings (Quality, Speed & Captions) */}
                   <div className="relative">
                     <button
                       onClick={() => {
@@ -1254,13 +1360,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                           ? 'bg-[#16A34A] text-white'
                           : 'text-white hover:bg-[#16A34A]'
                       }`}
-                      title="Quality & Speed Settings"
+                      title="Quality, Speed & Captions"
                     >
                       <Settings className="h-5 w-5" />
                     </button>
 
+                    <input
+                      ref={subtitleFileInputRef}
+                      type="file"
+                      accept=".vtt,.srt,text/vtt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleLoadSubtitleFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+
                     {showSettingsMenu && (
-                      <div className="absolute right-0 bottom-12 z-50 w-56 rounded-xl border border-white/15 bg-neutral-950/95 p-3 shadow-2xl backdrop-blur-xl text-xs space-y-3">
+                      <div className="absolute right-0 bottom-12 z-50 w-60 rounded-xl border border-white/15 bg-neutral-950/95 p-3 shadow-2xl backdrop-blur-xl text-xs space-y-3">
                         {qualityLevels.length > 0 && (
                           <div>
                             <div className="mb-1.5 font-bold text-neutral-400 uppercase tracking-wider text-[10px]">
@@ -1316,6 +1434,65 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                                 {spd}x
                               </button>
                             ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between font-bold text-neutral-400 uppercase tracking-wider text-[10px]">
+                            <span>Captions / Subtitles</span>
+                            <button
+                              type="button"
+                              onClick={() => subtitleFileInputRef.current?.click()}
+                              className="text-[#4ade80] hover:underline normal-case font-semibold"
+                            >
+                              + Load .VTT/.SRT
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              onClick={() => {
+                                setCaptionsEnabled(false);
+                                setActiveSubtitleTrack(-1);
+                                setShowSettingsMenu(false);
+                              }}
+                              className={`rounded-md px-2.5 py-1 font-semibold transition ${
+                                !captionsEnabled
+                                  ? 'bg-[#16A34A] text-white'
+                                  : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
+                              }`}
+                            >
+                              Off
+                            </button>
+                            {subtitleTracks.map((tr) => (
+                              <button
+                                key={tr.id}
+                                onClick={() => {
+                                  setActiveSubtitleTrack(tr.id);
+                                  setCaptionsEnabled(true);
+                                  setShowSettingsMenu(false);
+                                }}
+                                className={`rounded-md px-2.5 py-1 font-semibold transition ${
+                                  captionsEnabled && activeSubtitleTrack === tr.id
+                                    ? 'bg-[#16A34A] text-white'
+                                    : 'bg-white/10 text-neutral-200 hover:bg-[#16A34A]/30'
+                                }`}
+                              >
+                                {tr.name}
+                              </button>
+                            ))}
+                            {customSubtitleUrl && (
+                              <button
+                                onClick={() => {
+                                  setCaptionsEnabled(true);
+                                  setShowSettingsMenu(false);
+                                }}
+                                className={`rounded-md px-2.5 py-1 font-semibold transition truncate max-w-[140px] ${
+                                  captionsEnabled ? 'bg-[#16A34A] text-white' : 'bg-white/10 text-neutral-200'
+                                }`}
+                              >
+                                {customSubtitleName || 'Uploaded CC'}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

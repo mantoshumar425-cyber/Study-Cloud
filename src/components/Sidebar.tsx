@@ -16,8 +16,17 @@ import {
   Sigma,
   Download,
   Share2,
+  LayoutDashboard,
+  Radio,
+  BookOpenCheck,
+  HelpCircle,
+  ShoppingCart,
+  Bell,
+  User,
+  Shield,
 } from 'lucide-react';
 import { NavTab, ThemeId } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 export const STUDY_CLOUD_LOGO =
   '/assets/aistudio/file_0000000032b08211ac7bbc1f00111c6e_0ba6160d.png';
@@ -31,6 +40,7 @@ interface SidebarProps {
   currentTheme: ThemeId;
   favoritesCount: number;
   downloadsCount?: number;
+  unreadNotifications?: number;
   adventureStats: {
     xp: number;
     level: number;
@@ -51,23 +61,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTheme,
   favoritesCount,
   downloadsCount = 0,
+  unreadNotifications = 0,
   adventureStats,
   isMobileOpen,
   onCloseMobile,
   isDesktopCollapsed,
 }) => {
+  const { isAdmin } = useAuth();
+
   const mainItems: Array<{
     id: NavTab;
     label: string;
     subtitle: string;
     icon: React.ComponentType<{ className?: string }>;
   }> = [
-    { id: 'batches', label: 'Batches', subtitle: '18,000+ courses', icon: BookOpen },
+    { id: 'dashboard', label: 'Dashboard', subtitle: 'Overview & continue learning', icon: LayoutDashboard },
+    { id: 'batches', label: 'Batches', subtitle: '18,000+ recorded courses', icon: BookOpen },
+    { id: 'live', label: 'Live Classes', subtitle: 'Stream, Q&A & attendance', icon: Radio },
     { id: 'khazana', label: 'Khazana', subtitle: 'Faculty lecture vault', icon: Gem },
     { id: 'pi', label: 'Pi', subtitle: 'Pi Pro OTT concept vault', icon: Sigma },
+    { id: 'dpp', label: 'Daily DPP', subtitle: 'MCQs & subjective sheets', icon: BookOpenCheck },
+    { id: 'test', label: 'Test Series', subtitle: 'Chapter, weekly & CBT', icon: ClipboardCheck },
+    { id: 'doubts', label: 'Doubt Center', subtitle: 'Text & photo doubts', icon: HelpCircle },
+    { id: 'leaderboard', label: 'Leaderboard', subtitle: 'AIR, percentile & XP', icon: Trophy },
+    { id: 'cart', label: 'Course Store', subtitle: 'Courses, coupons & orders', icon: ShoppingCart },
     { id: 'community', label: 'Community', subtitle: 'Channels & study lounge', icon: Users },
-    { id: 'test', label: 'Test', subtitle: 'CBT mock & practice sets', icon: ClipboardCheck },
-    { id: 'leaderboard', label: 'Leaderboard', subtitle: 'Total XP live rankings', icon: Trophy },
   ];
 
   const utilityItems: Array<{
@@ -76,10 +94,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     icon: React.ComponentType<{ className?: string }>;
     count?: number;
   }> = [
+    { id: 'notifications', label: 'Notifications', icon: Bell, count: unreadNotifications },
+    { id: 'profile', label: 'My Profile', icon: User },
     { id: 'downloads', label: 'Downloads', icon: Download, count: downloadsCount },
     { id: 'favorites', label: 'Favorites', icon: Heart, count: favoritesCount },
     { id: 'history', label: 'History', icon: History },
     { id: 'settings', label: 'Settings', icon: Settings2 },
+    ...(isAdmin ? [{ id: 'admin' as NavTab, label: 'Admin Console', icon: Shield }] : []),
   ];
 
   const handleNav = (tab: NavTab) => {

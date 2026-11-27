@@ -1752,14 +1752,21 @@ export function registerFeatureRoutes(app: express.Express, deps: FeatureRouteDe
           job.percent = 100;
         } else {
           job.status = 'error';
-          job.error = errOut.trim().slice(-240) || `ffmpeg exited with code ${code}`;
+          job.error =
+            errOut.trim().slice(-240) ||
+            (code === -2
+              ? 'Server ffmpeg unavailable — please refresh the app to use the browser downloader.'
+              : `ffmpeg exited with code ${code}`);
         }
       });
 
-      proc.on('error', (err) => {
+      proc.on('error', (err: any) => {
         if (job.status === 'cancelled') return;
         job.status = 'error';
-        job.error = err.message || 'Failed to launch downloader';
+        job.error =
+          err?.code === 'ENOENT'
+            ? 'Server ffmpeg unavailable — please refresh the app to use the browser downloader.'
+            : err?.message || 'Failed to launch downloader';
       });
 
       return res.json({ success: true, jobId, fileName });
